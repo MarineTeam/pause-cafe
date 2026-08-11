@@ -1,0 +1,47 @@
+/* Deliberately minimal: product cards keep the theme's own styling. */
+
+.pcm-week {
+	margin: 0 0 3rem;
+}
+
+.pcm-week__header {
+	margin: 0 0 1.5rem;
+	text-align: center;
+}
+
+.pcm-week__date {
+	margin: 0 0 0.25rem;
+}
+
+.pcm-week__state {
+	margin: 0;
+	font-size: 0.95em;
+	opacity: 0.75;
+}
+
+.pcm-week--closed .pcm-week__state,
+.pcm-week--upcoming .pcm-week__state {
+	font-weight: 600;
+}
+
+.pcm-location {
+	margin: 0 0 2.5rem;
+}
+
+.pcm-location__name {
+	margin: 0 0 1rem;
+	text-align: center;
+}
+
+.pcm-week__empty,
+.pcm-menu--empty p {
+	text-align: center;
+	opacity: 0.75;
+}
+
+.pcm-state-notice {
+	margin: 1em 0;
+	padding: 0.75em 1em;
+	border-left: 3px solid currentColor;
+	opacity: 0.85;
+}

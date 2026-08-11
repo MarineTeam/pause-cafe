@@ -1,0 +1,109 @@
+.pcm-wrap .pcm-month-nav {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 1em 0;
+}
+
+.pcm-month-nav span {
+	min-width: 12em;
+}
+
+.pcm-builder th,
+.pcm-builder td {
+	vertical-align: top;
+	padding: 12px 10px;
+}
+
+.pcm-builder__date {
+	width: 15em;
+}
+
+.pcm-builder .pcm-dish-input {
+	width: 100%;
+}
+
+.pcm-edit-link {
+	display: inline-block;
+	margin-top: 4px;
+	font-size: 12px;
+}
+
+.pcm-row--past {
+	opacity: 0.6;
+}
+
+.pcm-state {
+	display: inline-block;
+	padding: 1px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	line-height: 1.8;
+}
+
+.pcm-state--open {
+	background: #d5f5e3;
+	color: #0f6e56;
+}
+
+.pcm-state--upcoming {
+	background: #e6f1fb;
+	color: #0c447c;
+}
+
+.pcm-state--closed {
+	background: #faeeda;
+	color: #854f0b;
+}
+
+.pcm-state--past {
+	background: #f1efe8;
+	color: #5f5e5a;
+}
+
+.pcm-report-controls {
+	margin: 1.5em 0;
+}
+
+.pcm-report-location {
+	margin-bottom: 0.5em;
+}
+
+.pcm-report-count {
+	font-weight: 400;
+	color: #646970;
+}
+
+.pcm-report__qty {
+	width: 5em;
+	text-align: center;
+}
+
+.pcm-report {
+	margin-bottom: 2em;
+}
+
+.pcm-report-total {
+	font-size: 1.1em;
+}
+
+.pcm-locations input[type="text"],
+.pcm-locations select {
+	width: 100%;
+	max-width: 24em;
+}
+
+@media print {
+	#adminmenumain,
+	#wpadminbar,
+	#wpfooter,
+	.pcm-report-controls,
+	.notice {
+		display: none !important;
+	}
+
+	#wpcontent {
+		margin-left: 0 !important;
+		padding-left: 0 !important;
+	}
+}
