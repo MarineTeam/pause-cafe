@@ -1,0 +1,65 @@
+/* Deliberately minimal: product cards keep the theme's own styling. */
+
+.pcfm-block {
+	margin: 0 0 3rem;
+}
+
+.pcfm-block__header {
+	margin: 0 0 1.5rem;
+	text-align: center;
+}
+
+.pcfm-block__date {
+	margin: 0 0 0.25rem;
+}
+
+.pcfm-block__state {
+	margin: 0;
+	font-size: 0.95em;
+	opacity: 0.75;
+}
+
+.pcfm-block--closed .pcfm-block__state,
+.pcfm-block--blackout .pcfm-block__state {
+	font-weight: 600;
+	opacity: 1;
+}
+
+.pcfm-block__schedule {
+	margin: 0 0 1rem;
+	text-align: center;
+	font-size: 0.85em;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	opacity: 0.6;
+}
+
+.pcfm-location {
+	margin: 0 0 2.5rem;
+}
+
+.pcfm-location__name {
+	margin: 0 0 0.5rem;
+	text-align: center;
+}
+
+.pcfm-location__capacity {
+	margin: 0 0 1rem;
+	text-align: center;
+	font-size: 0.9em;
+	opacity: 0.75;
+}
+
+.pcfm-block__empty,
+.pcfm-menu__empty,
+.pcfm-menu--empty p {
+	text-align: center;
+	opacity: 0.75;
+}
+
+.pcfm-state-notice {
+	margin: 1em 0;
+	padding: 0.75em 1em;
+	border-left: 3px solid currentColor;
+	opacity: 0.85;
+}

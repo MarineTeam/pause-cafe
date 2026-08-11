@@ -1,0 +1,147 @@
+.pcfm-wrap .pcfm-month-nav {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 1em 0;
+}
+
+.pcfm-month-nav span {
+	min-width: 12em;
+}
+
+.pcfm-schedule-picker {
+	margin: 1em 0;
+}
+
+.pcfm-builder th,
+.pcfm-builder td,
+.pcfm-publish th,
+.pcfm-publish td,
+.pcfm-manual th,
+.pcfm-manual td {
+	vertical-align: top;
+	padding: 12px 10px;
+}
+
+.pcfm-builder__date {
+	width: 13em;
+}
+
+.pcfm-publish__location {
+	width: 14em;
+	vertical-align: middle;
+}
+
+.pcfm-dish-input {
+	width: 100%;
+	max-width: 28em;
+}
+
+.pcfm-portions {
+	display: inline-block;
+	margin-top: 6px;
+	font-size: 12px;
+	color: #646970;
+}
+
+.pcfm-portions input {
+	width: 5em;
+}
+
+.pcfm-edit-link,
+.pcfm-sold {
+	display: inline-block;
+	margin: 6px 0 0 10px;
+	font-size: 12px;
+}
+
+.pcfm-sold {
+	color: #646970;
+}
+
+.pcfm-row--past,
+.pcfm-row--blackout {
+	opacity: 0.6;
+}
+
+.pcfm-state {
+	display: inline-block;
+	padding: 1px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	line-height: 1.8;
+}
+
+.pcfm-state--open {
+	background: #d5f5e3;
+	color: #0f6e56;
+}
+
+.pcfm-state--upcoming {
+	background: #e6f1fb;
+	color: #0c447c;
+}
+
+.pcfm-state--closed {
+	background: #faeeda;
+	color: #854f0b;
+}
+
+.pcfm-state--past,
+.pcfm-state--none {
+	background: #f1efe8;
+	color: #5f5e5a;
+}
+
+.pcfm-state--blackout {
+	background: #fcebeb;
+	color: #a32d2d;
+}
+
+.pcfm-report-controls {
+	margin: 1.5em 0;
+}
+
+.pcfm-report-location {
+	margin-bottom: 0.5em;
+}
+
+.pcfm-report-count {
+	font-weight: 400;
+	color: #646970;
+}
+
+.pcfm-report__qty {
+	width: 6em;
+	text-align: center;
+}
+
+.pcfm-report {
+	margin-bottom: 2em;
+}
+
+.pcfm-report-total {
+	font-size: 1.1em;
+}
+
+.pcfm-locations input[type="text"],
+.pcfm-locations select {
+	width: 100%;
+	max-width: 24em;
+}
+
+@media print {
+	#adminmenumain,
+	#wpadminbar,
+	#wpfooter,
+	.pcfm-report-controls,
+	.pcfm-schedule-picker,
+	.notice {
+		display: none !important;
+	}
+
+	#wpcontent {
+		margin-left: 0 !important;
+		padding-left: 0 !important;
+	}
+}
