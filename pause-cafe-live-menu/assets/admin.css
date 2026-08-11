@@ -1,0 +1,94 @@
+.pclm-status p {
+	font-size: 14px;
+}
+
+.pclm-publish th,
+.pclm-publish td {
+	vertical-align: middle;
+	padding: 14px 10px;
+}
+
+.pclm-publish__location {
+	width: 16em;
+}
+
+.pclm-publish .pclm-dish-input {
+	width: 100%;
+	max-width: 32em;
+}
+
+.pclm-edit-link {
+	display: inline-block;
+	margin-left: 10px;
+	font-size: 12px;
+}
+
+.pclm-state {
+	display: inline-block;
+	padding: 1px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	line-height: 1.8;
+}
+
+.pclm-state--open {
+	background: #d5f5e3;
+	color: #0f6e56;
+}
+
+.pclm-state--closed {
+	background: #faeeda;
+	color: #854f0b;
+}
+
+.pclm-state--past {
+	background: #f1efe8;
+	color: #5f5e5a;
+}
+
+.pclm-report-controls {
+	margin: 1.5em 0;
+}
+
+.pclm-report-location {
+	margin-bottom: 0.5em;
+}
+
+.pclm-report-count {
+	font-weight: 400;
+	color: #646970;
+}
+
+.pclm-report__qty {
+	width: 5em;
+	text-align: center;
+}
+
+.pclm-report {
+	margin-bottom: 2em;
+}
+
+.pclm-report-total {
+	font-size: 1.1em;
+}
+
+.pclm-locations input[type="text"],
+.pclm-locations select {
+	width: 100%;
+	max-width: 24em;
+}
+
+@media print {
+	#adminmenumain,
+	#wpadminbar,
+	#wpfooter,
+	.pclm-report-controls,
+	.notice {
+		display: none !important;
+	}
+
+	#wpcontent {
+		margin-left: 0 !important;
+		padding-left: 0 !important;
+	}
+}

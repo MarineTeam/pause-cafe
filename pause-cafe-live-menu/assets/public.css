@@ -1,0 +1,47 @@
+/* Deliberately minimal: product cards keep the theme's own styling. */
+
+.pclm-menu {
+	margin: 0 0 3rem;
+}
+
+.pclm-menu__header {
+	margin: 0 0 1.5rem;
+	text-align: center;
+}
+
+.pclm-menu__date {
+	margin: 0 0 0.25rem;
+}
+
+.pclm-menu__state {
+	margin: 0;
+	font-size: 0.95em;
+	opacity: 0.75;
+}
+
+.pclm-menu--closed .pclm-menu__state {
+	font-weight: 600;
+	opacity: 1;
+}
+
+.pclm-location {
+	margin: 0 0 2.5rem;
+}
+
+.pclm-location__name {
+	margin: 0 0 1rem;
+	text-align: center;
+}
+
+.pclm-menu__empty,
+.pclm-menu--empty p {
+	text-align: center;
+	opacity: 0.75;
+}
+
+.pclm-state-notice {
+	margin: 1em 0;
+	padding: 0.75em 1em;
+	border-left: 3px solid currentColor;
+	opacity: 0.85;
+}
