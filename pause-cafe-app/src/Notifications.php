@@ -95,6 +95,69 @@ class Notifications {
 	}
 
 	/**
+	 * Tells someone their order is off, and what happened to their money.
+	 *
+	 * Whether a refund went back is read from the ledger rather than guessed
+	 * from the payment method — that is what actually moved, and it is what they
+	 * will see on their statement.
+	 */
+	public static function orderCancelled( int $orderId ): Result {
+		$order = Orders::find( $orderId );
+
+		if ( ! $order ) {
+			return Result::failed( 'none', 'No such order.' );
+		}
+
+		$refund = Orders::refundEntryFor( $orderId );
+		$body   = array();
+
+		$body[] = 'Hello ' . $order['user_name'] . ',';
+		$body[] = '';
+		$body[] = 'Your order for ' . Schedule::formatDate( (string) $order['service_date'], 'l j F' ) .
+			' has been cancelled.';
+		$body[] = '';
+
+		foreach ( Orders::lines( $orderId ) as $line ) {
+			$who = '' !== $line['person_name'] ? $line['person_name'] : $order['user_name'];
+
+			$body[] = '  ' . (int) $line['qty'] . ' x ' . $line['item_name'] . ' — ' . $who;
+		}
+
+		$body[] = '';
+
+		if ( $refund ) {
+			$body[] = Money::format( (int) $refund['delta_cents'] ) . ' has gone back into your wallet.';
+			$body[] = 'Your balance is now ' . Money::format( Wallet::balance( (int) $order['user_id'] ) ) . '.';
+		} elseif ( Orders::isPaid( $order ) ) {
+			// Paid outside the wallet, so the system has nothing to hand back.
+			$body[] = 'You had already paid ' . Money::format( (int) $order['total_cents'] ) .
+				' for this order. That was not taken from your wallet, so please speak to an organiser ' .
+				'about getting it back.';
+		} else {
+			$body[] = 'Nothing had been charged for this order, so there is nothing to refund.';
+		}
+
+		$url = self::baseUrl();
+
+		if ( '' !== $url ) {
+			$body[] = '';
+			$body[] = 'The order is still here: ' . $url . '/orders/' . $orderId;
+		}
+
+		$body[] = '';
+		$body[] = self::siteName();
+
+		return Mailer::send(
+			Message::make(
+				(string) $order['user_email'],
+				(string) $order['user_name'],
+				'Order cancelled for ' . Schedule::formatDate( (string) $order['service_date'], 'j F' ),
+				implode( "\n", $body )
+			)
+		);
+	}
+
+	/**
 	 * Tells someone they can now order.
 	 */
 	public static function accountApproved( int $userId ): Result {

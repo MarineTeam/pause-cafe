@@ -152,9 +152,16 @@ folder beats one silently dropped because an API key expired. Both failures are
 logged, and **Send a test to myself** in Settings names the transport that
 actually carried it.
 
-Three emails go out, all plain text: an order confirmation listing every meal
-with its name, group and note; a notice when an account is approved; and a
-heads-up to organisers when somebody signs up.
+Four emails go out, all plain text: an order confirmation listing every meal
+with its name, group and note; a cancellation notice; a message when an account
+is approved; and a heads-up to organisers when somebody signs up.
+
+The cancellation notice says what became of the money, and says it three
+different ways depending on what actually happened — refunded to the wallet
+with the new balance, paid in cash so speak to an organiser, or never charged so
+nothing to refund. Which one is chosen comes from the **wallet ledger**, not
+from the payment method, so the email cannot claim a refund the ledger does not
+show.
 
 Adding another: implement `PauseCafe\Mail\Transport` and call
 `Mailer::register()`. It declares its own configuration fields, so the settings

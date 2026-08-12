@@ -13,7 +13,7 @@ each run and never touching `data/`.
 
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
-php -d extension=php_pdo_sqlite tests/test-app.php        # 203 assertions
+php -d extension=php_pdo_sqlite tests/test-app.php        # 218 assertions
 ```
 
 **`test-schedule.php`** — window resolution. Each of the three modes on its own,
@@ -39,12 +39,16 @@ parsing and dot-stuffing, and the fallback to mail() when the chosen transport
 fails — driven by a stub transport that always does. The log transport is
 selected throughout, so a run never reaches for a mail server.
 
+Cancellation gets all three of its outcomes checked — refunded to the wallet,
+paid in cash, never charged — including that the two non-wallet cases write no
+ledger entry and the email does not claim one.
+
 ## With a server
 
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 80 assertions
+bash tests/e2e.sh                                          # 88 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token
