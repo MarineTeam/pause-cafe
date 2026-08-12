@@ -886,4 +886,83 @@ $log = (string) file_get_contents( $logPath );
 check( 'organisers hear about a sign-up', false !== strpos( $log, 'admin@example.org' ), true );
 check( 'and are told who', false !== strpos( $log, 'New Comer' ), true );
 
+/* ------------------------------------------------------------------ */
+
+echo "\nCancelling says what happened to the money\n";
+
+check( 'an uncancelled order has no refund entry', Orders::refundEntryFor( $mailOrder ), null );
+
+$balanceBeforeCancel = Wallet::balance( $memberId );
+
+unlink( $logPath );
+Orders::cancel( $mailOrder, $adminId );
+Notifications::orderCancelled( $mailOrder );
+
+$refundEntry = Orders::refundEntryFor( $mailOrder );
+
+check( 'a wallet order leaves a refund entry', null !== $refundEntry, true );
+check( 'for the order total', (int) $refundEntry['delta_cents'], 1100 );
+check( 'and the balance goes back up', Wallet::balance( $memberId ), $balanceBeforeCancel + 1100 );
+
+$log = (string) file_get_contents( $logPath );
+
+check( 'the email says it was cancelled', false !== strpos( $log, 'has been cancelled' ), true );
+check( 'names the refunded amount', false !== strpos( $log, Money::format( 1100 ) . ' has gone back into your wallet' ), true );
+check( 'and states the new balance', false !== strpos( $log, 'Your balance is now ' . Money::format( Wallet::balance( $memberId ) ) ), true );
+
+echo "\nA cash order that was never collected refunds nothing\n";
+
+$cashUnpaid = Orders::place(
+	$memberId,
+	array( array( 'item_id' => $kRcc, 'qty' => 1, 'person_name' => 'Bo' ) ),
+	null,
+	'',
+	false,
+	'cod'
+);
+
+$balanceBeforeCancel = Wallet::balance( $memberId );
+
+unlink( $logPath );
+Orders::cancel( $cashUnpaid, $adminId );
+Notifications::orderCancelled( $cashUnpaid );
+
+check( 'no refund entry is written', Orders::refundEntryFor( $cashUnpaid ), null );
+check( 'and the wallet is untouched', Wallet::balance( $memberId ), $balanceBeforeCancel );
+
+$log = (string) file_get_contents( $logPath );
+
+check( 'the email says nothing was charged', false !== strpos( $log, 'nothing to refund' ), true );
+check( 'and does not claim a wallet refund', false !== strpos( $log, 'gone back into your wallet' ), false );
+
+echo "\nA cash order already collected sends them to an organiser\n";
+
+$cashPaid = Orders::place(
+	$memberId,
+	array( array( 'item_id' => $kRcc, 'qty' => 1, 'person_name' => 'Cass' ) ),
+	null,
+	'',
+	false,
+	'cod'
+);
+
+Orders::markPaid( $cashPaid );
+
+$balanceBeforeCancel = Wallet::balance( $memberId );
+
+unlink( $logPath );
+Orders::cancel( $cashPaid, $adminId );
+Notifications::orderCancelled( $cashPaid );
+
+check( 'still no refund entry', Orders::refundEntryFor( $cashPaid ), null );
+
+// The system never held this money, so inventing a wallet credit would be
+// making up a payment that never went through it.
+check( 'and no wallet credit is invented', Wallet::balance( $memberId ), $balanceBeforeCancel );
+
+$log = (string) file_get_contents( $logPath );
+
+check( 'the email points them at an organiser', false !== strpos( $log, 'speak to an organiser' ), true );
+check( 'naming what they paid', false !== strpos( $log, Money::format( 1000 ) ), true );
+
 finish();

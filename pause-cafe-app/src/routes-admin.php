@@ -496,20 +496,30 @@ $router->post(
 		$requireAdmin();
 		Csrf::verify();
 
-		$order = Orders::find( (int) $id );
-		$paid  = $order && Orders::isPaid( $order );
-		$byCod = $order && 'cod' === $order['payment_method'];
+		$orderId = (int) $id;
+		$order   = Orders::find( $orderId );
+		$paid    = $order && Orders::isPaid( $order );
 
 		try {
-			Orders::cancel( (int) $id, Auth::id() );
+			Orders::cancel( $orderId, Auth::id() );
 
-			// Cash already collected is not something the system can hand back.
-			View::flash(
-				'success',
-				$byCod && $paid
-					? 'Order cancelled. It was paid in cash, so return the money in person.'
-					: 'Order cancelled and anything paid has been put back.'
-			);
+			$refund = Orders::refundEntryFor( $orderId );
+
+			if ( $refund ) {
+				$message = 'Order cancelled. ' . Money::format( (int) $refund['delta_cents'] ) .
+					' went back to their wallet, leaving ' .
+					Money::format( Wallet::balance( (int) $order['user_id'] ) ) . '.';
+			} elseif ( $paid ) {
+				// Money collected outside the wallet is not something the system
+				// can hand back.
+				$message = 'Order cancelled. It was already paid outside the wallet, so return the money in person.';
+			} else {
+				$message = 'Order cancelled. Nothing had been charged, so there is nothing to refund.';
+			}
+
+			Notifications::orderCancelled( $orderId );
+
+			View::flash( 'success', $message . ' They have been emailed.' );
 		} catch ( \RuntimeException $e ) {
 			View::flash( 'error', $e->getMessage() );
 		}

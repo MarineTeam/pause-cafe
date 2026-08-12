@@ -54,6 +54,22 @@ use PauseCafe\Schedule;
 	</table>
 </div>
 
+<?php if ( 'cancelled' === $order['status'] ) : ?>
+	<?php $refund = \PauseCafe\Orders::refundEntryFor( (int) $order['id'] ); ?>
+	<div class="flash flash--notice">
+		<?php if ( $refund ) : ?>
+			This order was cancelled and
+			<strong><?= e( Money::format( (int) $refund['delta_cents'] ) ) ?></strong>
+			went back into the wallet.
+		<?php elseif ( \PauseCafe\Orders::isPaid( $order ) ) : ?>
+			This order was cancelled. It was paid outside the wallet, so speak to an
+			organiser about getting the money back.
+		<?php else : ?>
+			This order was cancelled. Nothing had been charged for it.
+		<?php endif; ?>
+	</div>
+<?php endif; ?>
+
 <?php if ( '' !== $order['note'] ) : ?>
 	<p class="muted">Note: <?= e( $order['note'] ) ?></p>
 <?php endif; ?>

@@ -238,6 +238,23 @@ class Orders {
 		}
 	}
 
+	/**
+	 * The wallet entry written when this order was cancelled, if there was one.
+	 *
+	 * Read from the ledger rather than inferred from the payment method: the
+	 * ledger is what actually moved, and it is the same thing the member sees on
+	 * their statement.
+	 */
+	public static function refundEntryFor( int $orderId ): ?array {
+		$statement = Database::pdo()->prepare(
+			'SELECT * FROM wallet_entries WHERE kind = ? AND reference = ? LIMIT 1'
+		);
+
+		$statement->execute( array( Wallet::KIND_REFUND, 'refund:' . $orderId ) );
+
+		return $statement->fetch() ?: null;
+	}
+
 	public static function isPaid( array $order ): bool {
 		return '' !== (string) ( $order['paid_at'] ?? '' );
 	}

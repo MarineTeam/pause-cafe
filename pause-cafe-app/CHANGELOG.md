@@ -8,6 +8,32 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.5.0 — 2026-08-12
+
+### Added
+
+- **An email when an order is cancelled**, saying plainly what happened to the
+  money. Three outcomes, three different messages:
+  - paid from the wallet — names the amount returned and the new balance
+  - paid in cash — says the money was not taken from the wallet and to speak to
+    an organiser
+  - never paid — says there is nothing to refund
+- **The order page shows the same thing** once an order is cancelled, so it is
+  answerable without going back to the email.
+- The organiser's confirmation after cancelling now names the refunded amount
+  and the member's resulting balance, rather than saying "anything paid has
+  been put back".
+
+### Notes
+
+- Whether a refund happened is read from the wallet ledger — the entry
+  `refund:{order}` — rather than inferred from the payment method. That is what
+  actually moved, and it is the same row the member sees on their statement, so
+  the email cannot claim a refund the ledger does not show.
+- Cancelling a cash order that was already collected still writes nothing to the
+  wallet. Inventing a credit for money the system never held would put the
+  ledger out of step with reality.
+
 ## 0.4.0 — 2026-08-12
 
 ### Added

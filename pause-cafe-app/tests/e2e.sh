@@ -281,6 +281,31 @@ has "the right one does" "$(curl -s -b $K -c $K "$BASE/kitchen?range=all")" "BBQ
 rm -f "$K"
 
 echo ""
+echo "Cancelling an order"
+# The first order on this date is the wallet one, so this exercises the refund
+# path rather than the cash one.
+ORDERS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-08-16")
+WALLET_ORDER=$(echo "$ORDERS" | grep -o '/admin/orders/[0-9]*/cancel' | head -1 | grep -o '[0-9]\+')
+
+T=$(tok $A /admin/orders)
+CANCEL=$(curl -s -o /dev/null -w '%{http_code}' -b $A -c $A \
+  -X POST "$BASE/admin/orders/$WALLET_ORDER/cancel" -d "_token=$T")
+want "cancelling redirects" "$CANCEL" "302"
+
+ACCOUNT=$(curl -s -b $M -c $M "$BASE/account")
+has "the order now reads cancelled" "$ACCOUNT" "Cancelled"
+has "and a refund appears in their wallet history" "$ACCOUNT" "Refund"
+
+ORDERPAGE=$(curl -s -b $M -c $M "$BASE/orders/$WALLET_ORDER")
+has "the order page says the wallet was refunded" "$(flat "$ORDERPAGE")" "went back into the wallet"
+has "naming the amount" "$ORDERPAGE" '\$20\.00'
+
+CANCELMAIL=$(cat data/mail.log 2>/dev/null)
+has "they were emailed about it" "$CANCELMAIL" "Order cancelled for"
+has "telling them the money is back" "$CANCELMAIL" "has gone back into your wallet"
+has "and what the balance is now" "$CANCELMAIL" "Your balance is now"
+
+echo ""
 echo "Email actually sent"
 MAILLOG=$(cat data/mail.log 2>/dev/null)
 has "organisers were told about the sign-up" "$MAILLOG" "New sign-up: Sam Member"
