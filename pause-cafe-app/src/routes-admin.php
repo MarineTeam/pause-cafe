@@ -15,6 +15,7 @@ use PauseCafe\Groups;
 use PauseCafe\Kitchen;
 use PauseCafe\Mailer;
 use PauseCafe\Menu;
+use PauseCafe\MenuBuilder;
 use PauseCafe\Money;
 use PauseCafe\Notifications;
 use PauseCafe\Orders;
@@ -264,6 +265,108 @@ $router->get(
 				'mode'      => Schedule::activeMode(),
 			)
 		);
+	}
+);
+
+/*
+ * Registered before /admin/menu/{id}: the router takes the first matching
+ * pattern, and {id} would otherwise swallow "builder".
+ */
+$router->get(
+	'/admin/menu/builder',
+	static function () use ( $requireAdmin, $query ): void {
+		$requireAdmin();
+
+		$mode      = Schedule::activeMode();
+		$locations = Menu::locations();
+		$month     = $query( 'month' );
+
+		if ( ! preg_match( '/^(\d{4})-(\d{2})$/', $month, $matches ) ) {
+			$now     = Schedule::now();
+			$matches = array( '', $now->format( 'Y' ), $now->format( 'm' ) );
+			$month   = $now->format( 'Y-m' );
+		}
+
+		$year  = (int) $matches[1];
+		$index = (int) $matches[2];
+
+		$cursor   = ( new DateTimeImmutable( $year . '-' . $index . '-01', Schedule::timezone() ) );
+		$previous = $cursor->modify( '-1 month' )->format( 'Y-m' );
+		$next     = $cursor->modify( '+1 month' )->format( 'Y-m' );
+
+		// On-publish has no calendar to fill in: there is only the menu you are
+		// about to put live, so the grid collapses to a single row.
+		$dates = Schedule::MODE_ON_PUBLISH === $mode
+			? array()
+			: Schedule::serviceDatesInMonth( $year, $index );
+
+		$current = Menu::currentServiceDate();
+		$rows    = array();
+
+		foreach ( $dates as $date ) {
+			$cells = array();
+
+			foreach ( $locations as $location ) {
+				$cells[ (int) $location['id'] ] = Menu::itemBySlot( $date, (int) $location['id'] );
+			}
+
+			$rows[ $date ] = $cells;
+		}
+
+		$live = array();
+
+		if ( Schedule::MODE_ON_PUBLISH === $mode && $current ) {
+			foreach ( $locations as $location ) {
+				$found = Menu::itemsForServiceDate( $current, (int) $location['id'], false );
+
+				$live[ (int) $location['id'] ] = $found ? $found[0] : null;
+			}
+		}
+
+		echo View::render(
+			'admin/menu-builder',
+			array(
+				'title'     => 'Build menu',
+				'mode'      => $mode,
+				'month'     => $month,
+				'monthName' => $cursor->format( 'F Y' ),
+				'previous'  => $previous,
+				'next'      => $next,
+				'locations' => $locations,
+				'rows'      => $rows,
+				'live'      => $live,
+				'names'     => Menu::distinctNames(),
+				'today'     => Schedule::now()->format( 'Y-m-d' ),
+			)
+		);
+	}
+);
+
+$router->post(
+	'/admin/menu/builder',
+	static function () use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$month = $post( 'month' );
+
+		$tally = MenuBuilder::save(
+			(array) ( $_POST['dish'] ?? array() ),
+			(array) ( $_POST['from'] ?? array() ),
+			(array) ( $_POST['until'] ?? array() )
+		);
+
+		View::flash(
+			'success',
+			sprintf(
+				'Menu saved. %d added, %d updated, %d moved to draft.',
+				$tally['created'],
+				$tally['updated'],
+				$tally['drafted']
+			)
+		);
+
+		View::redirect( '/admin/menu/builder' . ( '' !== $month ? '?month=' . urlencode( $month ) : '' ) );
 	}
 );
 

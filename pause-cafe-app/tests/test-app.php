@@ -24,6 +24,7 @@ use PauseCafe\Mail\SmtpTransport;
 use PauseCafe\Mail\Transport;
 use PauseCafe\Mailer;
 use PauseCafe\Menu;
+use PauseCafe\MenuBuilder;
 use PauseCafe\Money;
 use PauseCafe\Notifications;
 use PauseCafe\Orders;
@@ -964,5 +965,116 @@ $log = (string) file_get_contents( $logPath );
 
 check( 'the email points them at an organiser', false !== strpos( $log, 'speak to an organiser' ), true );
 check( 'naming what they paid', false !== strpos( $log, Money::format( 1000 ) ), true );
+
+/* ------------------------------------------------------------------ */
+
+echo "\nThe grid builder fills a month\n";
+
+Settings::setMany(
+	array(
+		'active_mode'     => Schedule::MODE_PLANNED,
+		'service_weekday' => '0',
+		'default_price'   => '9.50',
+	)
+);
+
+freeze( '2026-11-03 09:00' ); // Tuesday. The 1st is behind us, the rest ahead.
+
+check(
+	'the month offers its Sundays',
+	Schedule::serviceDatesInMonth( 2026, 11 ),
+	array( '2026-11-01', '2026-11-08', '2026-11-15', '2026-11-22', '2026-11-29' )
+);
+
+$tally = MenuBuilder::save(
+	array(
+		'2026-11-01' => array( $marine => 'Should be ignored' ),
+		'2026-11-08' => array( $marine => 'Cottage pie', $rcc => 'Dal and rice' ),
+		'2026-11-15' => array( $marine => 'Leek soup' ),
+	)
+);
+
+check( 'three dishes are created', $tally['created'], 3 );
+check( 'a day already served is left alone', Menu::itemBySlot( '2026-11-01', $marine ), null );
+check( 'the dish lands in its cell', Menu::itemBySlot( '2026-11-08', $marine )['name'], 'Cottage pie' );
+check( 'the other campus too', Menu::itemBySlot( '2026-11-08', $rcc )['name'], 'Dal and rice' );
+check( 'priced from the default', Menu::itemBySlot( '2026-11-08', $marine )['price_cents'], 950 );
+check( 'and published', Menu::itemBySlot( '2026-11-08', $marine )['status'], 'published' );
+
+echo "\nA repeat inherits what was set last time\n";
+
+$pie = Menu::itemBySlot( '2026-11-08', $marine );
+
+Menu::save(
+	array_merge( $pie, array( 'price_cents' => 1275, 'description' => 'With mash' ) ),
+	(int) $pie['id']
+);
+
+MenuBuilder::save( array( '2026-11-22' => array( $marine => 'Cottage pie' ) ) );
+
+$repeat = Menu::itemBySlot( '2026-11-22', $marine );
+
+check( 'the price carries across', $repeat['price_cents'], 1275 );
+check( 'and the description', $repeat['description'], 'With mash' );
+check( 'without touching the original', (int) Menu::itemBySlot( '2026-11-08', $marine )['id'], (int) $pie['id'] );
+
+echo "\nSaving is idempotent, and edits stay in place\n";
+
+check(
+	'saving the same grid changes nothing',
+	MenuBuilder::save( array( '2026-11-08' => array( $marine => 'Cottage pie' ) ) ),
+	array( 'created' => 0, 'updated' => 0, 'drafted' => 0 )
+);
+
+check(
+	'renaming counts as an update',
+	MenuBuilder::save( array( '2026-11-08' => array( $marine => 'Shepherd pie' ) ) )['updated'],
+	1
+);
+
+check( 'and edits the same row', (int) Menu::itemBySlot( '2026-11-08', $marine )['id'], (int) $pie['id'] );
+
+echo "\nClearing a cell drafts rather than deletes\n";
+
+$soup = Menu::itemBySlot( '2026-11-15', $marine );
+
+check( 'clearing drafts it', MenuBuilder::save( array( '2026-11-15' => array( $marine => '' ) ) )['drafted'], 1 );
+check( 'the dish still exists', (int) Menu::itemBySlot( '2026-11-15', $marine )['id'], (int) $soup['id'] );
+check( 'as a draft', Menu::itemBySlot( '2026-11-15', $marine )['status'], 'draft' );
+check( 'and clearing again does nothing', MenuBuilder::save( array( '2026-11-15' => array( $marine => '' ) ) )['drafted'], 0 );
+check( 'while retyping it republishes', MenuBuilder::save( array( '2026-11-15' => array( $marine => 'Leek soup' ) ) )['updated'], 1 );
+
+echo "\nManual mode takes a window per row\n";
+
+Settings::set( 'active_mode', Schedule::MODE_MANUAL );
+
+MenuBuilder::save(
+	array( '2026-11-29' => array( $marine => 'Winter stew' ) ),
+	array( '2026-11-29' => '2026-11-24T09:00' ),
+	array( '2026-11-29' => '2026-11-28T17:00' )
+);
+
+$stew = Menu::itemBySlot( '2026-11-29', $marine );
+
+check( 'the from is stored', $stew['open_from'], '2026-11-24T09:00' );
+check( 'the until is stored', $stew['close_at'], '2026-11-28T17:00' );
+check( 'and it resolves as a manual window', $stew['window']->source, Schedule::MODE_MANUAL );
+check( 'open inside it', $stew['window']->isOrderable( new DateTimeImmutable( '2026-11-26 12:00', Schedule::timezone() ) ), true );
+check( 'shut before it', $stew['window']->isOrderable( new DateTimeImmutable( '2026-11-23 12:00', Schedule::timezone() ) ), false );
+
+echo "\nOn-publish mode collapses to one row\n";
+
+Settings::set( 'active_mode', Schedule::MODE_ON_PUBLISH );
+freeze( '2026-12-01 14:00' ); // Tuesday.
+
+check( 'publishing the row creates a dish', MenuBuilder::save( array( $marine => 'Festive roast' ) )['created'], 1 );
+
+$festive = array_values( array_filter( Menu::allItems(), static fn( $i ) => 'Festive roast' === $i['name'] ) );
+
+check( 'stamped as opened', '' !== $festive[0]['opened_at'], true );
+check( 'and orderable straight away', $festive[0]['window']->isOrderable(), true );
+check( 'running to the next cutoff', $festive[0]['window']->closeAt->format( 'D Y-m-d H:i' ), 'Sat 2026-12-05 13:00' );
+
+Settings::set( 'active_mode', Schedule::MODE_PLANNED );
 
 finish();

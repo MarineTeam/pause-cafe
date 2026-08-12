@@ -8,6 +8,33 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.6.0 — 2026-08-12
+
+### Added
+
+- **A grid builder at `/admin/menu/builder`**, the same shape as the flex
+  plugin's: service dates down, pickup locations across, type the dish names and
+  save a month in one sitting.
+- It renders **three ways, following the active mode** — a month grid for
+  planned, a single row for on-publish that opens ordering on save, and the
+  month grid plus a from/until per row for manual.
+- **Autocomplete from past dishes**, using a native `<datalist>` so it needs no
+  JavaScript. A new dish takes its price and description from the last one with
+  the same name, so a repeat is never priced twice.
+
+### Notes
+
+- **The per-dish editor stays.** The grid is for filling a month; the editor is
+  for a price, a description or a portion limit on one dish. Both write the same
+  rows, and each screen links to the other.
+- Clearing a cell moves that dish to draft rather than deleting it, so anything
+  ordered against it keeps pointing somewhere. Retyping the name republishes it.
+- Days already served are read-only and are never rewritten by a save.
+- Saving an unchanged grid reports no changes rather than touching every row.
+- The save logic lives in `MenuBuilder` rather than in the route, which is both
+  the convention the rest of the app follows and what makes it testable — the
+  route now just hands over the submitted arrays.
+
 ## 0.5.0 — 2026-08-12
 
 ### Added

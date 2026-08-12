@@ -106,6 +106,26 @@ Implement `PauseCafe\Payments\Method` and call `Payments::register()` after
 `Payments::boot()` in `src/bootstrap.php`. Checkout, settings and the orders
 screen pick it up on their own — none of them name a method.
 
+## Two ways to add a menu
+
+Both write the same dishes, and each screen links to the other.
+
+**The grid** at `/admin/menu/builder` — service dates down, pickup locations
+across. Type the names, save a month in one sitting. Names autocomplete against
+past dishes, and a repeat takes its price and description from the last one with
+that name, so nothing is priced twice.
+
+It follows the active mode: a month grid for **planned**, a single row for
+**on-publish** that opens ordering the moment it is saved, and the month grid
+plus a from/until per row for **manual**.
+
+**The list** at `/admin/menu` — one dish at a time, for a price, a description,
+a portion limit or a per-dish window override.
+
+Clearing a cell in the grid moves that dish to draft rather than deleting it, so
+anything ordered against it keeps its history. Days already served are
+read-only.
+
 ## The kitchen list
 
 `/kitchen` is the page the cooks and servers actually use — every ordered meal

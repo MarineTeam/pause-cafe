@@ -24,6 +24,7 @@ in `public/index.php` and `routes-admin.php`; rendering lives in `views/`.
 | `Blackouts.php` | Days no menu runs. A blackout voids a window. |
 | `Settings.php` | Key/value store, cached per request. `active_mode` chooses the schedule mode. |
 | `Menu.php` | Dishes and pickup locations. Every read comes back with its `Window` attached. |
+| `MenuBuilder.php` | The grid way of entering a menu. Alongside the per-dish editor, not instead of it. |
 | `Cart.php` | The session cart. Lines are a list, not keyed by dish — the same dish for two people is two lines. |
 | `Orders.php` | Placing, cancelling and reporting. Owns the transaction that ties an order to its wallet debit. |
 | `Wallet.php` | The append-only ledger. |
