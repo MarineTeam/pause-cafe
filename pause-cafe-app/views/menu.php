@@ -72,11 +72,17 @@ $user = Auth::user();
 											value="<?= e( $user['name'] ) ?>" required>
 									</div>
 
-									<div class="field">
-										<label for="group-<?= (int) $item['id'] ?>">Group</label>
-										<input type="text" id="group-<?= (int) $item['id'] ?>" name="group_name"
-											value="<?= e( $user['group_name'] ) ?>" placeholder="e.g. Youth">
-									</div>
+									<?php if ( \PauseCafe\Groups::any() ) : ?>
+										<div class="field">
+											<?php
+											$gs = array(
+												'id'    => 'group-' . (int) $item['id'],
+												'value' => $user['group_name'],
+											);
+											include __DIR__ . '/partials/group-select.php';
+											?>
+										</div>
+									<?php endif; ?>
 
 									<div class="field">
 										<label for="qty-<?= (int) $item['id'] ?>">Quantity</label>

@@ -115,6 +115,30 @@ $mode     = $settings['active_mode'];
 	</div>
 
 	<div class="panel">
+		<h3>Payment methods</h3>
+		<p class="muted">
+			What people can choose at checkout. At least one has to stay on. If only
+			one is enabled it is used silently, with no choice shown.
+		</p>
+
+		<?php foreach ( $methods as $methodId => $method ) : ?>
+			<div class="field">
+				<label>
+					<input type="checkbox" name="payment[<?= e( $methodId ) ?>]" value="1"
+						<?= \PauseCafe\Payments::isEnabled( $methodId ) ? 'checked' : '' ?>>
+					<?= e( $method->label() ) ?>
+				</label>
+				<p class="help" style="margin-left:24px">
+					<?= e( $method->description() ) ?>
+					<?php if ( ! $method->settlesImmediately() ) : ?>
+						Orders stay owing until an organiser marks them paid.
+					<?php endif; ?>
+				</p>
+			</div>
+		<?php endforeach; ?>
+	</div>
+
+	<div class="panel">
 		<h3>Storefront wording</h3>
 
 		<div class="field">
@@ -156,6 +180,59 @@ $mode     = $settings['active_mode'];
 		<input type="text" name="name" placeholder="e.g. Marine" required>
 		<button type="submit" class="button--quiet">Add location</button>
 	</form>
+</div>
+
+<div class="panel">
+	<h2>Groups</h2>
+	<p class="muted">
+		What people can pick when ordering. Keeping it to a list rather than a text
+		box is what stops the cook list filling up with "Youth", "youth" and "Yth"
+		as three separate rows.
+	</p>
+
+	<?php if ( ! $groups ) : ?>
+		<p class="muted">
+			None yet — until you add one, the group field does not appear anywhere.
+		</p>
+	<?php else : ?>
+		<table>
+			<tbody>
+				<?php foreach ( $groups as $group ) : ?>
+					<tr>
+						<td>
+							<form method="post" action="/admin/groups/<?= (int) $group['id'] ?>/rename" class="field-row" style="max-width:420px">
+								<?= Csrf::field() ?>
+								<input type="text" name="name" value="<?= e( $group['name'] ) ?>" required>
+								<button type="submit" class="button--quiet">Rename</button>
+							</form>
+						</td>
+						<td class="right">
+							<form method="post" action="/admin/groups/<?= (int) $group['id'] ?>/delete"
+								onsubmit="return confirm('Remove this group from the list? People already in it keep it until you change them.')">
+								<?= Csrf::field() ?>
+								<button type="submit" class="link-button">Remove</button>
+							</form>
+						</td>
+					</tr>
+				<?php endforeach; ?>
+			</tbody>
+		</table>
+		<p class="help">Renaming moves everyone in that group across. Past orders keep the name they were placed under.</p>
+	<?php endif; ?>
+
+	<form method="post" action="/admin/groups/add" class="field-row" style="max-width:420px">
+		<?= Csrf::field() ?>
+		<input type="text" name="name" placeholder="e.g. Youth" required>
+		<button type="submit" class="button--quiet">Add group</button>
+	</form>
+
+	<?php if ( $orphaned ) : ?>
+		<div class="flash flash--notice" style="margin-top:16px">
+			These groups are still on people's accounts but are not on the list:
+			<strong><?= e( implode( ', ', $orphaned ) ) ?></strong>.
+			Add them back, or edit those accounts on the People screen.
+		</div>
+	<?php endif; ?>
 </div>
 
 <div class="panel">

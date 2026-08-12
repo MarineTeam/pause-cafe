@@ -44,6 +44,23 @@ BADPOST=$(curl -s -o /dev/null -w '%{http_code}' -b $A -c $A -X POST "$BASE/admi
 want "a bad token is rejected" "$BADPOST" "419"
 
 echo ""
+echo "Groups"
+# Groups have to exist before anything can be assigned one -- with an empty list
+# the field does not render and any submitted value is discarded.
+T=$(tok $A /admin/settings)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/groups/add" -d "_token=$T" -d "name=Youth"
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/groups/add" -d "_token=$T" -d "name=Seniors"
+
+SETTINGS=$(curl -s -b $A -c $A "$BASE/admin/settings")
+has "a group appears in settings" "$SETTINGS" 'value="Youth"'
+has "and so does the second" "$SETTINGS" 'value="Seniors"'
+
+DUP=$(tok $A /admin/settings)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/groups/add" -d "_token=$DUP" -d "name=youth"
+COUNT=$(curl -s -b $A -c $A "$BASE/admin/settings" | grep -c 'name="name" value="' || true)
+want "a case-variant duplicate is refused" "$COUNT" "2"
+
+echo ""
 echo "Menu"
 # An explicit from/until override keeps this test independent of the real clock.
 T=$(tok $A /admin/menu/new)
@@ -82,7 +99,21 @@ curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/users/$MEMBER_ID" \
 MENU=$(curl -s -b $M -c $M "$BASE/")
 has "an approved member gets the order form" "$MENU" "Add to cart"
 has "the name field is prefilled" "$MENU" 'value="Sam Member"'
-has "and the group field too" "$MENU" 'value="Youth"'
+has "the group is a dropdown" "$MENU" '<select id="group-'
+has "with their group preselected" "$MENU" '<option value="Youth" selected'
+has "and the other group offered" "$MENU" '<option value="Seniors"'
+hasnt "and no free-text group box anywhere" "$MENU" 'type="text" name="group_name"'
+
+# The dropdown is only a convenience on the form; the server has to reject a
+# value that was never on the list.
+T=$(tok $A /admin/users)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/users/$MEMBER_ID" \
+  -d "_token=$T" -d "name=Sam Member" -d "group_name=Totally Invented" -d "role=member" -d "is_approved=1"
+hasnt "a forged group is discarded" "$(curl -s -b $A -c $A "$BASE/admin/users")" "Totally Invented"
+
+T=$(tok $A /admin/users)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/users/$MEMBER_ID" \
+  -d "_token=$T" -d "name=Sam Member" -d "group_name=Youth" -d "role=member" -d "is_approved=1"
 
 echo ""
 echo "Wallet top-up by an organiser"
@@ -123,6 +154,47 @@ CSV=$(curl -s -b $A -c $A "$BASE/admin/report/export?date=2026-08-16")
 has "the CSV export has a header row" "$CSV" '"Service date",Location,Dish'
 hasnt "and carries no PHP notices" "$CSV" "Deprecated"
 has "with the order line" "$CSV" "Sam Member"
+
+echo ""
+echo "Payment methods"
+has "settings offers a toggle per method" "$(curl -s -b $A -c $A "$BASE/admin/settings")" 'name="payment\[cod\]"'
+has "and one for the wallet" "$(curl -s -b $A -c $A "$BASE/admin/settings")" 'name="payment\[wallet\]"'
+
+# A second dish, unlimited, so the cash order is not blocked by the sold-out one.
+T=$(tok $A /admin/menu/new)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
+  -d "_token=$T" -d "name=Pay later pasta" -d "location_id=2" -d "price=12.00" \
+  -d "capacity=0" -d "status=published" -d "service_date=2026-08-16" \
+  -d "open_from=2026-01-01T00:00" -d "close_at=2027-01-01T00:00"
+
+ITEM2=$(curl -s -b $M -c $M "$BASE/" | grep -B2 'Pay later pasta' -A40 | grep -o 'name="item_id" value="[0-9]*"' | head -1 | grep -o '[0-9]\+')
+T=$(tok $M /)
+curl -s -o /dev/null -b $M -c $M -X POST "$BASE/cart/add" \
+  -d "_token=$T" -d "item_id=$ITEM2" -d "qty=1" -d "person_name=Sam" -d "group_name=Seniors"
+
+CART=$(curl -s -b $M -c $M "$BASE/cart")
+has "the cart asks how to pay" "$CART" "How would you like to pay"
+has "offering the wallet" "$CART" "Wallet balance"
+has "and cash on pickup" "$CART" "Pay on pickup"
+
+T=$(echo "$CART" | grep -o 'name="_token" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"$//')
+curl -s -o /dev/null -b $M -c $M -X POST "$BASE/checkout" -d "_token=$T" -d "payment_method=cod"
+
+ACCOUNT=$(curl -s -b $M -c $M "$BASE/account")
+has "a cash order is flagged as still to pay" "$ACCOUNT" "To pay"
+has "and the balance is untouched at \$5" "$ACCOUNT" '\$5\.00'
+
+ORDERS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-08-16")
+has "the organiser sees it as owing" "$ORDERS" "Owing"
+has "with a total left to collect" "$ORDERS" '\$12\.00 still to collect'
+
+CODID=$(echo "$ORDERS" | grep -o '/admin/orders/[0-9]*/paid' | tail -1 | grep -o '[0-9]\+')
+T=$(tok $A /admin/orders)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/$CODID/paid" -d "_token=$T" -d "state=paid"
+
+ORDERS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-08-16")
+has "marking it paid shows up" "$ORDERS" "Paid"
+hasnt "and the collect banner is gone" "$ORDERS" "still to collect"
 
 echo ""
 echo "Access control"

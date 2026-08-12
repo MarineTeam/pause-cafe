@@ -116,6 +116,24 @@ class Database {
 			)'
 		);
 
+		/*
+		 * The groups people can be in. Named member_groups because GROUPS is a
+		 * keyword in SQLite's window-function grammar.
+		 *
+		 * Groups are referenced by name rather than by ID. Names are what appear
+		 * on the cook list and what get frozen into order lines, and keeping one
+		 * representation avoids a join every time a line is displayed. Renaming a
+		 * group updates the accounts carrying it; past orders keep the name they
+		 * were placed under, which is correct for a receipt.
+		 */
+		$pdo->exec(
+			'CREATE TABLE IF NOT EXISTS member_groups (
+				id         INTEGER PRIMARY KEY AUTOINCREMENT,
+				name       TEXT    NOT NULL UNIQUE,
+				sort_order INTEGER NOT NULL DEFAULT 0
+			)'
+		);
+
 		$pdo->exec(
 			"CREATE TABLE IF NOT EXISTS menu_items (
 				id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,7 +204,33 @@ class Database {
 			)'
 		);
 
+		/*
+		 * Added after the first release, so they arrive by ALTER rather than in
+		 * the CREATE above -- an existing install would never see a changed
+		 * CREATE TABLE IF NOT EXISTS.
+		 */
+		self::addColumnIfMissing( 'orders', 'payment_method', "TEXT NOT NULL DEFAULT 'wallet'" );
+		self::addColumnIfMissing( 'orders', 'paid_at', "TEXT NOT NULL DEFAULT ''" );
+
 		self::seed();
+	}
+
+	/**
+	 * Adds a column when it is not already there.
+	 *
+	 * Table and column names come from this file only, never from a request, so
+	 * interpolating them is safe -- SQLite cannot bind identifiers anyway.
+	 */
+	private static function addColumnIfMissing( string $table, string $column, string $definition ): void {
+		$pdo = self::pdo();
+
+		foreach ( $pdo->query( 'PRAGMA table_info(' . $table . ')' )->fetchAll() as $existing ) {
+			if ( $existing['name'] === $column ) {
+				return;
+			}
+		}
+
+		$pdo->exec( 'ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $definition );
 	}
 
 	private static function seed(): void {

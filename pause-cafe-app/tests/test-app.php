@@ -14,9 +14,11 @@ fresh_database();
 
 require dirname( __DIR__ ) . '/src/bootstrap.php';
 
+use PauseCafe\Groups;
 use PauseCafe\Menu;
 use PauseCafe\Money;
 use PauseCafe\Orders;
+use PauseCafe\Payments;
 use PauseCafe\Schedule;
 use PauseCafe\Settings;
 use PauseCafe\Users;
@@ -346,5 +348,158 @@ $unusedId = Menu::save(
 
 check( 'an unused dish deletes outright', Menu::delete( $unusedId ), true );
 check( 'and is gone', Menu::item( $unusedId ), null );
+
+/* ------------------------------------------------------------------ */
+
+echo "\nPayment methods are a register, not a hardcoded wallet\n";
+
+check( 'both built-ins are registered', array_keys( Payments::all() ), array( 'wallet', 'cod' ) );
+check( 'both are on by default', array_keys( Payments::enabled() ), array( 'wallet', 'cod' ) );
+check( 'the wallet is the default choice', Payments::defaultId(), 'wallet' );
+check( 'the wallet settles at once', Payments::get( 'wallet' )->settlesImmediately(), true );
+check( 'cash on pickup does not', Payments::get( 'cod' )->settlesImmediately(), false );
+
+freeze( '2026-09-09 10:00' ); // Wednesday, inside the window for the 13th.
+
+$cashDish = Menu::save(
+	array(
+		'location_id'  => $marine,
+		'name'         => 'Cash dish',
+		'price_cents'  => 1500,
+		'service_date' => '2026-09-13',
+		'status'       => 'published',
+	)
+);
+
+$before  = Wallet::balance( $memberId );
+$cashRef = Orders::place(
+	$memberId,
+	array( array( 'item_id' => $cashDish, 'qty' => 1, 'person_name' => 'Sam' ) ),
+	null,
+	'',
+	false,
+	'cod'
+);
+
+check( 'the order records how it is being paid', Orders::find( $cashRef )['payment_method'], 'cod' );
+check( 'it starts owing', Orders::isPaid( Orders::find( $cashRef ) ), false );
+check( 'and takes nothing from the wallet', Wallet::balance( $memberId ), $before );
+check( 'it appears on the owing list', count( Orders::unpaidForServiceDate( '2026-09-13' ) ), 1 );
+
+Orders::markPaid( $cashRef );
+
+check( 'marking it paid sticks', Orders::isPaid( Orders::find( $cashRef ) ), true );
+check( 'and clears the owing list', Orders::unpaidForServiceDate( '2026-09-13' ), array() );
+check( 'without inventing a ledger entry', Wallet::balance( $memberId ), $before );
+
+Orders::cancel( $cashRef, $adminId );
+
+// Cash the system never held is not cash it can hand back.
+check( 'cancelling a cash order credits nothing', Wallet::balance( $memberId ), $before );
+
+echo "\nThe wallet can be switched off entirely\n";
+
+Settings::set( Payments::settingKey( 'wallet' ), 'no' );
+
+check( 'it drops out of the enabled list', array_keys( Payments::enabled() ), array( 'cod' ) );
+check( 'and cash becomes the default', Payments::defaultId(), 'cod' );
+check_throws( 'choosing it is refused', static fn() => Payments::resolve( 'wallet' ), 'not available' );
+
+$fallbackDish = Menu::save(
+	array(
+		'location_id'  => $marine,
+		'name'         => 'Fallback dish',
+		'price_cents'  => 800,
+		'service_date' => '2026-09-13',
+		'status'       => 'published',
+	)
+);
+
+$fallbackRef = Orders::place( $memberId, array( array( 'item_id' => $fallbackDish, 'qty' => 1 ) ) );
+
+check( 'an order with no method chosen falls back to cash', Orders::find( $fallbackRef )['payment_method'], 'cod' );
+check( 'and still moves no money', Wallet::balance( $memberId ), $before );
+
+Settings::set( Payments::settingKey( 'wallet' ), 'yes' );
+
+check_throws( 'an invented method is refused', static fn() => Payments::resolve( 'bitcoin' ), 'does not exist' );
+
+echo "\nA short balance blocks the wallet but never cash\n";
+
+$skint = Users::create( 'skint@example.org', 'nothing-here-yet', 'Skint Two', '', Users::ROLE_MEMBER, true );
+
+check( 'the wallet objects', '' !== Payments::get( 'wallet' )->unavailableReason( $skint, 5000 ), true );
+check( 'cash does not', Payments::get( 'cod' )->unavailableReason( $skint, 5000 ), '' );
+
+check_throws(
+	'so a wallet order is refused',
+	static fn() => Orders::place( $skint, array( array( 'item_id' => $fallbackDish, 'qty' => 1 ) ), null, '', false, 'wallet' ),
+	'balance'
+);
+
+$skintRef = Orders::place( $skint, array( array( 'item_id' => $fallbackDish, 'qty' => 1 ) ), null, '', false, 'cod' );
+
+check( 'while a cash order goes through', Orders::find( $skintRef )['payment_method'], 'cod' );
+check( 'owing what it is worth', (int) Orders::find( $skintRef )['total_cents'], 800 );
+
+/* ------------------------------------------------------------------ */
+
+echo "\nGroups are a managed list, not free text\n";
+
+check( 'none to begin with', Groups::any(), false );
+check( 'so nothing validates', Groups::sanitise( 'Youth' ), '' );
+
+$youthId = Groups::add( 'Youth' );
+Groups::add( 'Seniors' );
+
+check( 'a group can be added', $youthId > 0, true );
+check( 'and is listed', Groups::names(), array( 'Youth', 'Seniors' ) );
+check( 'a duplicate is refused', Groups::add( 'Youth' ), 0 );
+check( 'so is a case-variant duplicate', Groups::add( 'youth' ), 0 );
+check( 'so is a blank name', Groups::add( '   ' ), 0 );
+
+check( 'a known group passes through', Groups::sanitise( 'Youth' ), 'Youth' );
+check( 'matching ignores case but returns the canonical spelling', Groups::sanitise( 'YOUTH' ), 'Youth' );
+check( 'surrounding space is trimmed', Groups::sanitise( '  Seniors ' ), 'Seniors' );
+check( 'an unknown group is discarded', Groups::sanitise( 'Made Up' ), '' );
+check( 'and so is empty input', Groups::sanitise( '' ), '' );
+
+// This is the guard that matters: a dropdown is only a convenience on the form,
+// so a hand-crafted POST must not be able to invent a group.
+check(
+	'a forged group never reaches the database',
+	( static function () {
+		$id = Users::create( 'forged@example.org', 'a-password-here', 'Forger', Groups::sanitise( 'Definitely Not A Group' ) );
+
+		return Users::find( $id )['group_name'];
+	} )(),
+	''
+);
+
+echo "\nRenaming a group moves everyone in it\n";
+
+Users::update( $memberId, array( 'group_name' => 'Youth' ) );
+
+check( 'renaming succeeds', Groups::rename( $youthId, 'Young Adults' ), true );
+check( 'the list is updated', Groups::sanitise( 'Young Adults' ), 'Young Adults' );
+check( 'the old name no longer validates', Groups::sanitise( 'Youth' ), '' );
+check( 'the account moved across', Users::find( $memberId )['group_name'], 'Young Adults' );
+
+check(
+	'past orders keep the name they were placed under',
+	Orders::summaryForServiceDate( '2026-08-16' )['Marine']['BBQ pork on rice 叉燒飯']['people'][0],
+	'Sam (Youth) ×2'
+);
+
+check( 'renaming onto an existing name is refused', Groups::rename( $youthId, 'Seniors' ), false );
+check( 'renaming to blank is refused', Groups::rename( $youthId, '  ' ), false );
+
+echo "\nRemoving a group leaves the people in it alone\n";
+
+Groups::delete( $youthId );
+
+check( 'it is off the list', Groups::names(), array( 'Seniors' ) );
+check( 'but the account keeps its group', Users::find( $memberId )['group_name'], 'Young Adults' );
+check( 'and it is reported as orphaned', Groups::orphaned(), array( 'Young Adults' ) );
 
 finish();

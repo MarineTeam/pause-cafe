@@ -35,10 +35,13 @@ class Orders {
 	}
 
 	/**
-	 * @param array $lines  Each: item_id, qty, person_name, group_name.
-	 * @param bool  $force  Admin override -- allows ordering outside the window
-	 *                      and past the wallet balance, for a phone order taken
-	 *                      after the cutoff. Capacity is still respected.
+	 * @param array  $lines         Each: item_id, qty, person_name, group_name.
+	 * @param bool   $force         Admin override -- allows ordering outside the
+	 *                              window and past whatever the payment method
+	 *                              would otherwise insist on, for a phone order
+	 *                              taken after the cutoff. Capacity is still
+	 *                              respected.
+	 * @param string $paymentMethod Method id. Empty picks the first enabled one.
 	 *
 	 * @return int New order ID.
 	 * @throws \RuntimeException With a message safe to show the customer.
@@ -48,7 +51,8 @@ class Orders {
 		array $lines,
 		?int $placedBy = null,
 		string $note = '',
-		bool $force = false
+		bool $force = false,
+		string $paymentMethod = ''
 	): int {
 		$user = Users::find( $userId );
 
@@ -65,6 +69,10 @@ class Orders {
 		if ( ! $lines ) {
 			throw new \RuntimeException( 'There is nothing in this order.' );
 		}
+
+		// Resolved before the transaction opens: a disabled or unknown method is
+		// a bad request, not a rollback.
+		$method = Payments::resolve( $paymentMethod );
 
 		$pdo = Database::pdo();
 
@@ -116,22 +124,36 @@ class Orders {
 				);
 			}
 
-			$balance = Wallet::balance( $userId );
+			// An organiser taking a phone order overrides this the same way they
+			// override the cutoff: the order still records what is owed.
+			if ( ! $force ) {
+				$reason = $method->unavailableReason( $userId, $total );
 
-			if ( ! $force && ! Settings::bool( 'allow_negative_balance' ) && $balance < $total ) {
-				throw new \RuntimeException(
-					'Your balance is ' . Money::format( $balance ) . ' and this order comes to ' .
-					Money::format( $total ) . '. Please top up first.'
-				);
+				if ( '' !== $reason ) {
+					throw new \RuntimeException( $reason );
+				}
 			}
 
+			$now = gmdate( 'Y-m-d H:i:s' );
+
 			$statement = $pdo->prepare(
-				'INSERT INTO orders (user_id, service_date, total_cents, status, placed_by, note, created_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?)'
+				'INSERT INTO orders
+					(user_id, service_date, total_cents, status, placed_by, note, created_at, payment_method, paid_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
 			);
 
 			$statement->execute(
-				array( $userId, $serviceDate, $total, 'confirmed', $placedBy, $note, gmdate( 'Y-m-d H:i:s' ) )
+				array(
+					$userId,
+					$serviceDate,
+					$total,
+					'confirmed',
+					$placedBy,
+					$note,
+					$now,
+					$method->id(),
+					$method->settlesImmediately() ? $now : '',
+				)
 			);
 
 			$orderId = (int) $pdo->lastInsertId();
@@ -157,15 +179,7 @@ class Orders {
 				);
 			}
 
-			Wallet::post(
-				$userId,
-				-$total,
-				Wallet::KIND_ORDER,
-				'Order #' . $orderId . ' for ' . Schedule::formatDate( $serviceDate, 'j M Y' ),
-				'order:' . $orderId,
-				$placedBy,
-				false
-			);
+			$method->charge( $userId, $orderId, $total, $placedBy );
 
 			self::commit( $pdo );
 
@@ -198,15 +212,21 @@ class Orders {
 			$statement = $pdo->prepare( "UPDATE orders SET status = 'cancelled' WHERE id = ?" );
 			$statement->execute( array( $orderId ) );
 
-			Wallet::post(
-				(int) $order['user_id'],
-				(int) $order['total_cents'],
-				Wallet::KIND_REFUND,
-				'Refund for cancelled order #' . $orderId,
-				'refund:' . $orderId,
-				$byUserId,
-				false
-			);
+			/*
+			 * Giving the money back is the method's business. A wallet order gets
+			 * a ledger entry; a cash order that was never collected has nothing to
+			 * return, and one that was is settled in person.
+			 */
+			$method = Payments::get( (string) $order['payment_method'] );
+
+			if ( $method ) {
+				$method->refund(
+					(int) $order['user_id'],
+					$orderId,
+					(int) $order['total_cents'],
+					$byUserId
+				);
+			}
 
 			self::commit( $pdo );
 		} catch ( \Throwable $e ) {
@@ -214,6 +234,32 @@ class Orders {
 
 			throw $e;
 		}
+	}
+
+	public static function isPaid( array $order ): bool {
+		return '' !== (string) ( $order['paid_at'] ?? '' );
+	}
+
+	/**
+	 * Records that the money for a pay-on-pickup order has been handed over.
+	 */
+	public static function markPaid( int $orderId, bool $paid = true ): void {
+		$statement = Database::pdo()->prepare( 'UPDATE orders SET paid_at = ? WHERE id = ?' );
+		$statement->execute( array( $paid ? gmdate( 'Y-m-d H:i:s' ) : '', $orderId ) );
+	}
+
+	/**
+	 * Confirmed orders for a service date that are still owing.
+	 *
+	 * @return array[]
+	 */
+	public static function unpaidForServiceDate( string $serviceDate ): array {
+		return array_values(
+			array_filter(
+				self::forServiceDate( $serviceDate ),
+				static fn( $order ) => ! self::isPaid( $order )
+			)
+		);
 	}
 
 	public static function find( int $id ): ?array {

@@ -16,9 +16,11 @@ use PauseCafe\Blackouts;
 use PauseCafe\Cart;
 use PauseCafe\Csrf;
 use PauseCafe\Database;
+use PauseCafe\Groups;
 use PauseCafe\Menu;
 use PauseCafe\Money;
 use PauseCafe\Orders;
+use PauseCafe\Payments;
 use PauseCafe\Router;
 use PauseCafe\Schedule;
 use PauseCafe\Settings;
@@ -214,7 +216,7 @@ $router->post(
 				$post( 'email' ),
 				(string) ( $_POST['password'] ?? '' ),
 				$post( 'name' ),
-				$post( 'group_name' )
+				Groups::sanitise( $post( 'group_name' ) )
 			);
 
 			View::flash( 'success', 'Thanks. An organiser will approve your account, and then you can order.' );
@@ -262,11 +264,13 @@ $router->post(
 			$personName = (string) ( $user['name'] ?? '' );
 		}
 
-		$groupName = $post( 'group_name' );
+		// A dropdown is a convenience on the form, not a promise about what
+		// arrives, so the value is checked against the configured list here.
+		$groupName = Groups::sanitise( $post( 'group_name' ) );
 
 		if ( '' === $groupName ) {
 			$user      = Auth::user();
-			$groupName = (string) ( $user['group_name'] ?? '' );
+			$groupName = Groups::sanitise( (string) ( $user['group_name'] ?? '' ) );
 		}
 
 		Cart::add( (int) $item['id'], max( 1, (int) ( $_POST['qty'] ?? 1 ) ), $personName, $groupName );
@@ -289,6 +293,7 @@ $router->get(
 				'title'   => 'Your cart',
 				'cart'    => $cart,
 				'balance' => Wallet::balance( Auth::id() ),
+				'methods' => Payments::enabled(),
 			)
 		);
 	}
@@ -304,7 +309,7 @@ $router->post(
 			(int) ( $_POST['index'] ?? -1 ),
 			(int) ( $_POST['qty'] ?? 1 ),
 			$post( 'person_name' ),
-			$post( 'group_name' )
+			Groups::sanitise( $post( 'group_name' ) )
 		);
 
 		View::redirect( '/cart' );
@@ -351,12 +356,24 @@ $router->post(
 						'group_name'  => $line['group_name'],
 					),
 					$cart['lines']
-				)
+				),
+				null,
+				'',
+				false,
+				(string) ( $_POST['payment_method'] ?? '' )
 			);
 
 			Cart::clear();
 
-			View::flash( 'success', 'Order placed. See you Sunday.' );
+			$order = Orders::find( $orderId );
+
+			View::flash(
+				'success',
+				Orders::isPaid( $order )
+					? 'Order placed. See you Sunday.'
+					: 'Order placed. Please bring payment on the day.'
+			);
+
 			View::redirect( '/orders/' . $orderId );
 		} catch ( \RuntimeException $e ) {
 			View::flash( 'error', $e->getMessage() );

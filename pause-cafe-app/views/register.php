@@ -14,11 +14,15 @@
 		<input type="text" id="name" name="name" required autofocus>
 	</div>
 
-	<div class="field">
-		<label for="group_name">Group</label>
-		<input type="text" id="group_name" name="group_name" placeholder="e.g. Youth">
-		<p class="help">Used as the default on your orders. You can change it per meal.</p>
-	</div>
+	<?php if ( \PauseCafe\Groups::any() ) : ?>
+		<div class="field">
+			<?php
+			$gs = array( 'id' => 'group_name' );
+			include __DIR__ . '/partials/group-select.php';
+			?>
+			<p class="help">Used as the default on your orders. You can change it per meal.</p>
+		</div>
+	<?php endif; ?>
 
 	<div class="field">
 		<label for="email">Email</label>

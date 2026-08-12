@@ -25,6 +25,7 @@ require_once __DIR__ . '/View.php';
 
 use PauseCafe\Database;
 use PauseCafe\Money;
+use PauseCafe\Payments;
 use PauseCafe\Schedule;
 use PauseCafe\View;
 use PauseCafe\Zeffy;
@@ -54,6 +55,10 @@ Zeffy::configure(
 );
 
 Database::migrate();
+
+// Registers the built-in payment methods. A site adding its own would call
+// Payments::register() after this line.
+Payments::boot();
 
 if ( ! function_exists( 'e' ) ) {
 	/**
