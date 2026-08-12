@@ -1,0 +1,13 @@
+# Everything that is not a real file goes through the front controller.
+<IfModule mod_rewrite.c>
+	RewriteEngine On
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteCond %{REQUEST_FILENAME} !-d
+	RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+# Belt and braces: the database and config live outside this directory, but if
+# the host is misconfigured and the whole project is exposed, do not serve them.
+<FilesMatch "\.(sqlite|sqlite-wal|sqlite-shm|log)$">
+	Require all denied
+</FilesMatch>
