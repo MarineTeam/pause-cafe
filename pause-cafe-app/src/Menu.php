@@ -170,6 +170,67 @@ class Menu {
 	}
 
 	/**
+	 * The dish sitting in one cell of the builder grid.
+	 *
+	 * Matched on the stored service_date column rather than the resolved window:
+	 * the grid is what wrote that column, and a lookup that went through the
+	 * schedule would not find a draft or a dish whose mode derives its date.
+	 */
+	public static function itemBySlot( string $serviceDate, int $locationId ): ?array {
+		if ( '' === $serviceDate || ! $locationId ) {
+			return null;
+		}
+
+		$statement = Database::pdo()->prepare(
+			'SELECT i.*, l.name AS location_name
+			 FROM menu_items i
+			 LEFT JOIN locations l ON l.id = i.location_id
+			 WHERE i.service_date = ? AND i.location_id = ?
+			 ORDER BY i.id
+			 LIMIT 1'
+		);
+
+		$statement->execute( array( $serviceDate, $locationId ) );
+
+		$row = $statement->fetch();
+
+		return $row ? self::decorate( $row ) : null;
+	}
+
+	/**
+	 * Every dish name that has been used, for the builder's autocomplete.
+	 *
+	 * @return string[]
+	 */
+	public static function distinctNames(): array {
+		$rows = Database::pdo()
+			->query( "SELECT DISTINCT name FROM menu_items WHERE name != '' ORDER BY name COLLATE NOCASE" )
+			->fetchAll( \PDO::FETCH_COLUMN );
+
+		return array_map( 'strval', $rows );
+	}
+
+	/**
+	 * The most recent dish with this name, used to carry a repeat's price and
+	 * description across instead of retyping them.
+	 */
+	public static function templateFor( string $name ): ?array {
+		$name = trim( $name );
+
+		if ( '' === $name ) {
+			return null;
+		}
+
+		$statement = Database::pdo()->prepare(
+			'SELECT * FROM menu_items WHERE name = ? ORDER BY id DESC LIMIT 1'
+		);
+
+		$statement->execute( array( $name ) );
+
+		return $statement->fetch() ?: null;
+	}
+
+	/**
 	 * Quantity already sold, counting confirmed orders only.
 	 */
 	public static function sold( int $itemId ): int {

@@ -72,7 +72,8 @@ tab from the request path.
 | | |
 | --- | --- |
 | `dashboard.php` | Counts, the active mode, this week's cook list |
-| `menu.php` `menu-edit.php` | Dish list and editor. The editor renders different fields per active mode. |
+| `menu.php` `menu-edit.php` | Dish list and per-dish editor. The editor renders different fields per active mode. |
+| `menu-builder.php` | The grid: dates down, locations across. Three renderings, picked by mode. |
 | `orders.php` `order-new.php` | Orders for a date; placing one on someone's behalf |
 | `report.php` | The kitchen report, with print styling |
 | `users.php` | People, approval, wallet credit/debit, password reset |

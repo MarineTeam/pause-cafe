@@ -103,6 +103,38 @@ has "under its pickup location" "$HOME_HTML" "Marine"
 has "signed-out visitors are asked to sign in" "$HOME_HTML" "Sign in to order"
 
 echo ""
+echo "Grid builder"
+BUILDER=$(curl -s -b $A -c $A "$BASE/admin/menu/builder?month=2026-08")
+has "the builder renders a month" "$BUILDER" "August 2026"
+has "with a column per pickup location" "$BUILDER" 'dish\[2026-08-23\]\[1\]'
+has "an autocomplete list of past dishes" "$BUILDER" '<datalist id="dish-names">'
+has "including one already entered" "$BUILDER" 'value="BBQ pork on rice"'
+has "and the menu list links to it" "$(curl -s -b $A -c $A "$BASE/admin/menu")" 'href="/admin/menu/builder"'
+
+T=$(tok $A "/admin/menu/builder?month=2026-08")
+SAVE=$(curl -s -o /dev/null -w '%{http_code}' -b $A -c $A -X POST "$BASE/admin/menu/builder" \
+  -d "_token=$T" -d "month=2026-08" \
+  -d "dish[2026-08-23][1]=Lentil shepherd pie" \
+  -d "dish[2026-08-23][2]=Chicken katsu" \
+  -d "dish[2026-08-30][1]=Lentil shepherd pie")
+want "saving the grid redirects" "$SAVE" "302"
+
+BUILDER=$(curl -s -b $A -c $A "$BASE/admin/menu/builder?month=2026-08")
+has "the new dish is in its cell" "$BUILDER" 'value="Lentil shepherd pie"'
+has "and so is the other campus" "$BUILDER" 'value="Chicken katsu"'
+has "the menu list shows them too" "$(curl -s -b $A -c $A "$BASE/admin/menu")" "Chicken katsu"
+
+# Clearing a cell drafts rather than deletes, so history survives.
+T=$(tok $A "/admin/menu/builder?month=2026-08")
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/builder" \
+  -d "_token=$T" -d "month=2026-08" \
+  -d "dish[2026-08-23][1]=Lentil shepherd pie" \
+  -d "dish[2026-08-23][2]=" \
+  -d "dish[2026-08-30][1]=Lentil shepherd pie"
+
+has "a cleared dish becomes a draft" "$(curl -s -b $A -c $A "$BASE/admin/menu")" "Draft"
+
+echo ""
 echo "Registration and approval"
 T=$(tok $M /register)
 curl -s -o /dev/null -b $M -c $M -X POST "$BASE/register" \

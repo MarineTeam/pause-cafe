@@ -22,7 +22,14 @@ $labels = array(
 	Mode: <?= e( Schedule::modes()[ $mode ] ?? $mode ) ?>
 </p>
 
-<p class="no-print"><a class="button" href="/admin/menu/new">Add a dish</a></p>
+<p class="no-print">
+	<a class="button" href="/admin/menu/builder">Build a month</a>
+	<a class="button button--quiet" href="/admin/menu/new">Add one dish</a>
+</p>
+<p class="help">
+	The builder fills a grid of dates and pickup locations in one go. This list is
+	for changing a single dish — its price, description or portion limit.
+</p>
 
 <?php if ( ! $items ) : ?>
 	<p class="muted">No dishes yet.</p>
