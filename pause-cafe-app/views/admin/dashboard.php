@@ -70,5 +70,5 @@ foreach ( $summary as $dishes ) {
 		</table>
 	<?php endforeach; ?>
 
-	<p><a class="button" href="/admin/report">Full kitchen report</a></p>
+	<p><a class="button" href="/kitchen">Full kitchen list</a></p>
 <?php endif; ?>

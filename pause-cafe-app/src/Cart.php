@@ -25,7 +25,7 @@ class Cart {
 		$_SESSION[ self::KEY ] = array_values( $lines );
 	}
 
-	public static function add( int $itemId, int $qty, string $personName, string $groupName ): void {
+	public static function add( int $itemId, int $qty, string $personName, string $groupName, string $note = '' ): void {
 		$lines = self::lines();
 
 		$lines[] = array(
@@ -33,12 +33,13 @@ class Cart {
 			'qty'         => max( 1, $qty ),
 			'person_name' => trim( $personName ),
 			'group_name'  => trim( $groupName ),
+			'note'        => self::trimNote( $note ),
 		);
 
 		self::store( $lines );
 	}
 
-	public static function update( int $index, int $qty, string $personName, string $groupName ): void {
+	public static function update( int $index, int $qty, string $personName, string $groupName, string $note = '' ): void {
 		$lines = self::lines();
 
 		if ( ! isset( $lines[ $index ] ) ) {
@@ -55,8 +56,17 @@ class Cart {
 		$lines[ $index ]['qty']         = $qty;
 		$lines[ $index ]['person_name'] = trim( $personName );
 		$lines[ $index ]['group_name']  = trim( $groupName );
+		$lines[ $index ]['note']        = self::trimNote( $note );
 
 		self::store( $lines );
+	}
+
+	/**
+	 * Notes end up on a printed kitchen sheet, so they are capped at something
+	 * that still fits in a table cell.
+	 */
+	private static function trimNote( string $note ): string {
+		return mb_substr( trim( $note ), 0, 200 );
 	}
 
 	public static function remove( int $index ): void {
@@ -122,6 +132,7 @@ class Cart {
 				'qty'         => $qty,
 				'person_name' => (string) $line['person_name'],
 				'group_name'  => (string) $line['group_name'],
+				'note'        => (string) ( $line['note'] ?? '' ),
 				'subtotal'    => $subtotal,
 			);
 		}

@@ -17,6 +17,7 @@ use PauseCafe\Cart;
 use PauseCafe\Csrf;
 use PauseCafe\Database;
 use PauseCafe\Groups;
+use PauseCafe\Kitchen;
 use PauseCafe\Menu;
 use PauseCafe\Money;
 use PauseCafe\Orders;
@@ -273,7 +274,13 @@ $router->post(
 			$groupName = Groups::sanitise( (string) ( $user['group_name'] ?? '' ) );
 		}
 
-		Cart::add( (int) $item['id'], max( 1, (int) ( $_POST['qty'] ?? 1 ) ), $personName, $groupName );
+		Cart::add(
+			(int) $item['id'],
+			max( 1, (int) ( $_POST['qty'] ?? 1 ) ),
+			$personName,
+			$groupName,
+			$post( 'note' )
+		);
 
 		View::flash( 'success', $item['name'] . ' added for ' . $personName . '.' );
 		View::redirect( '/cart' );
@@ -309,7 +316,8 @@ $router->post(
 			(int) ( $_POST['index'] ?? -1 ),
 			(int) ( $_POST['qty'] ?? 1 ),
 			$post( 'person_name' ),
-			Groups::sanitise( $post( 'group_name' ) )
+			Groups::sanitise( $post( 'group_name' ) ),
+			$post( 'note' )
 		);
 
 		View::redirect( '/cart' );
@@ -330,7 +338,7 @@ $router->post(
 
 $router->post(
 	'/checkout',
-	static function () use ( $requireLogin ): void {
+	static function () use ( $requireLogin, $post ): void {
 		$requireLogin();
 		Csrf::verify();
 
@@ -354,11 +362,12 @@ $router->post(
 						'qty'         => $line['qty'],
 						'person_name' => $line['person_name'],
 						'group_name'  => $line['group_name'],
+						'note'        => $line['note'],
 					),
 					$cart['lines']
 				),
 				null,
-				'',
+				mb_substr( $post( 'order_note' ), 0, 500 ),
 				false,
 				(string) ( $_POST['payment_method'] ?? '' )
 			);
@@ -456,6 +465,143 @@ $router->get(
 );
 
 /* -------------------------------------------------------------------------
+ * Kitchen list -- organisers, or anyone with the shared password
+ * ---------------------------------------------------------------------- */
+
+$router->get(
+	'/kitchen',
+	static function (): void {
+		if ( ! Kitchen::hasAccess() ) {
+			echo View::render(
+				'kitchen-locked',
+				array(
+					'title'     => 'Kitchen list',
+					'protected' => Kitchen::isProtected(),
+				)
+			);
+
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only.
+		$query   = $_GET;
+		$filters = Kitchen::filtersFromQuery( $query );
+		$sort    = (string) ( $query['sort'] ?? 'location' );
+		$dir     = (string) ( $query['dir'] ?? 'asc' );
+		$rows    = Orders::lineItemsFiltered( $filters, $sort, $dir );
+
+		echo View::render(
+			'kitchen',
+			array(
+				'title'   => 'Kitchen list',
+				'rows'    => $rows,
+				'totals'  => Orders::totalsByDish( $rows ),
+				'filters' => $filters,
+				'options' => Orders::filterOptions(),
+				'sort'    => array_key_exists( $sort, Orders::sortableColumns() ) ? $sort : 'location',
+				'dir'     => 'desc' === strtolower( $dir ) ? 'desc' : 'asc',
+				'query'   => $query,
+			)
+		);
+	}
+);
+
+$router->post(
+	'/kitchen/unlock',
+	static function () use ( $post ): void {
+		Csrf::verify();
+
+		if ( Kitchen::unlock( (string) ( $_POST['password'] ?? '' ) ) ) {
+			View::redirect( '/kitchen' );
+		}
+
+		View::flash( 'error', 'That password did not work.' );
+		View::redirect( '/kitchen' );
+	}
+);
+
+$router->post(
+	'/kitchen/lock',
+	static function (): void {
+		Csrf::verify();
+		Kitchen::lock();
+
+		View::flash( 'success', 'Signed out of the kitchen list.' );
+		View::redirect( '/kitchen' );
+	}
+);
+
+$router->get(
+	'/kitchen/export',
+	static function (): void {
+		if ( ! Kitchen::hasAccess() ) {
+			http_response_code( 403 );
+			echo 'Not allowed.';
+
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only.
+		$query   = $_GET;
+		$filters = Kitchen::filtersFromQuery( $query );
+		$rows    = Orders::lineItemsFiltered(
+			$filters,
+			(string) ( $query['sort'] ?? 'location' ),
+			(string) ( $query['dir'] ?? 'asc' )
+		);
+
+		$name = 'pause-cafe-kitchen';
+
+		if ( '' !== $filters['from'] ) {
+			$name .= '-' . $filters['from'];
+		}
+
+		nocache_headers_compat();
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename=' . $name . '.csv' );
+
+		$out = fopen( 'php://output', 'w' );
+
+		// Excel needs the BOM to read the Chinese dish names correctly.
+		fwrite( $out, chr( 0xEF ) . chr( 0xBB ) . chr( 0xBF ) );
+
+		$row = static function ( array $fields ) use ( $out ): void {
+			// $escape must be explicit: PHP 8.4 deprecates its default and writes
+			// the notice into this very stream.
+			fputcsv( $out, $fields, ',', '"', '' );
+		};
+
+		$row( array( 'Date', 'Location', 'Dish', 'Qty', 'Name', 'Group', 'Payment', 'Paid', 'Notes', 'Account', 'Order' ) );
+
+		foreach ( $rows as $line ) {
+			$row(
+				array(
+					$line['service_date'],
+					$line['location_name'],
+					$line['item_name'],
+					$line['qty'],
+					$line['person_name'],
+					$line['group_name'],
+					Payments::label( (string) $line['payment_method'] ),
+					'' !== $line['paid_at'] ? 'yes' : 'no',
+					trim( $line['note'] . ( '' !== $line['order_note'] ? ' / ' . $line['order_note'] : '' ) ),
+					$line['account_name'],
+					$line['order_id'],
+				)
+			);
+		}
+
+		fclose( $out );
+		exit;
+	}
+);
+
+function nocache_headers_compat(): void {
+	header( 'Cache-Control: no-store, no-cache, must-revalidate' );
+	header( 'Pragma: no-cache' );
+}
+
+/* -------------------------------------------------------------------------
  * Admin
  * ---------------------------------------------------------------------- */
 
@@ -517,4 +663,20 @@ try {
 
 	http_response_code( $code );
 	echo View::render( 'error', array( 'title' => 'Something went wrong', 'message' => $e->getMessage() ) );
+} catch ( \Throwable $e ) {
+	/*
+	 * A bug, not a refusal. Anything thrown here is logged and shown as a blank
+	 * apology -- a TypeError's message can name internals, and a bare 500 gives
+	 * the person in front of it nothing at all.
+	 */
+	error_log( 'pause-cafe: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() );
+
+	http_response_code( 500 );
+	echo View::render(
+		'error',
+		array(
+			'title'   => 'Something went wrong',
+			'message' => 'Sorry — that did not work. An organiser has been sent the details.',
+		)
+	);
 }

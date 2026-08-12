@@ -15,6 +15,7 @@ fresh_database();
 require dirname( __DIR__ ) . '/src/bootstrap.php';
 
 use PauseCafe\Groups;
+use PauseCafe\Kitchen;
 use PauseCafe\Menu;
 use PauseCafe\Money;
 use PauseCafe\Orders;
@@ -501,5 +502,190 @@ Groups::delete( $youthId );
 check( 'it is off the list', Groups::names(), array( 'Seniors' ) );
 check( 'but the account keeps its group', Users::find( $memberId )['group_name'], 'Young Adults' );
 check( 'and it is reported as orphaned', Groups::orphaned(), array( 'Young Adults' ) );
+
+/* ------------------------------------------------------------------ */
+
+echo "\nNotes ride along with each meal\n";
+
+freeze( '2026-10-07 10:00' ); // Wednesday, inside the window for the 11th.
+
+$kMarine = Menu::save(
+	array(
+		'location_id'  => $marine,
+		'name'         => 'Roast dinner',
+		'price_cents'  => 1100,
+		'service_date' => '2026-10-11',
+		'status'       => 'published',
+	)
+);
+
+$kRcc = Menu::save(
+	array(
+		'location_id'  => $rcc,
+		'name'         => 'Veggie curry',
+		'price_cents'  => 1000,
+		'service_date' => '2026-10-11',
+		'status'       => 'published',
+	)
+);
+
+Wallet::credit( $memberId, 20000, Wallet::KIND_TOPUP, 'Test float' );
+
+$notedRef = Orders::place(
+	$memberId,
+	array(
+		array( 'item_id' => $kMarine, 'qty' => 2, 'person_name' => 'Ada', 'group_name' => 'Youth', 'note' => 'no gravy' ),
+		array( 'item_id' => $kRcc, 'qty' => 1, 'person_name' => 'Bo', 'group_name' => 'Seniors' ),
+	),
+	null,
+	'Leave at the side door'
+);
+
+$notedLines = Orders::lines( $notedRef );
+
+check( 'a line note is stored', $notedLines[0]['note'], 'no gravy' );
+check( 'a line without one is empty', $notedLines[1]['note'], '' );
+check( 'the order note is stored too', Orders::find( $notedRef )['note'], 'Leave at the side door' );
+
+/* ------------------------------------------------------------------ */
+
+echo "\nThe kitchen table filters and sorts\n";
+
+$everything = Orders::lineItemsFiltered( array( 'from' => '2026-10-11', 'to' => '2026-10-11' ) );
+
+check( 'the date range narrows to that week', count( $everything ), 2 );
+check( 'rows carry the line note', $everything[0]['note'], 'no gravy' );
+check( 'and the order note alongside it', $everything[0]['order_note'], 'Leave at the side door' );
+check( 'and who actually ordered', $everything[0]['account_name'], 'Sam Member' );
+
+check(
+	'filtering by dish',
+	count( Orders::lineItemsFiltered( array( 'from' => '2026-10-11', 'to' => '2026-10-11', 'dish' => 'Veggie curry' ) ) ),
+	1
+);
+
+check(
+	'filtering by pickup location',
+	count( Orders::lineItemsFiltered( array( 'from' => '2026-10-11', 'to' => '2026-10-11', 'location' => 'Marine' ) ) ),
+	1
+);
+
+check(
+	'filtering by group',
+	Orders::lineItemsFiltered( array( 'from' => '2026-10-11', 'to' => '2026-10-11', 'group' => 'Seniors' ) )[0]['person_name'],
+	'Bo'
+);
+
+check(
+	'a range that excludes everything returns nothing',
+	Orders::lineItemsFiltered( array( 'from' => '2027-01-01', 'to' => '2027-01-31' ) ),
+	array()
+);
+
+check( 'totals fold the lines into dishes', Orders::totalsByDish( $everything ), array( 'Roast dinner' => 2, 'Veggie curry' => 1 ) );
+
+echo "\nSorting is whitelisted, and pickup stays the tiebreak\n";
+
+$byDate = array( 'from' => '2026-10-11', 'to' => '2026-10-11' );
+
+check(
+	'default order is by pickup location',
+	array_column( Orders::lineItemsFiltered( $byDate ), 'location_name' ),
+	array( 'Marine', 'RCC' )
+);
+
+check(
+	'sorting by dish descending',
+	array_column( Orders::lineItemsFiltered( $byDate, 'dish', 'desc' ), 'item_name' ),
+	array( 'Veggie curry', 'Roast dinner' )
+);
+
+check(
+	'sorting by quantity descending',
+	array_column( Orders::lineItemsFiltered( $byDate, 'qty', 'desc' ), 'qty' ),
+	array( 2, 1 )
+);
+
+// The sort key is interpolated into ORDER BY, so anything unrecognised has to
+// fall back rather than reach the query.
+check(
+	'an injected sort key falls back to the default',
+	array_column( Orders::lineItemsFiltered( $byDate, "qty; DROP TABLE orders --", 'asc' ), 'location_name' ),
+	array( 'Marine', 'RCC' )
+);
+
+check( 'and the table is still there', count( Orders::lineItemsFiltered( $byDate ) ), 2 );
+check( 'an injected direction is ignored', count( Orders::lineItemsFiltered( $byDate, 'qty', 'asc; DELETE FROM orders' ) ), 2 );
+
+$options = Orders::filterOptions();
+
+check( 'filter options list the dishes', in_array( 'Veggie curry', $options['dishes'], true ), true );
+check( 'and the locations', in_array( 'Marine', $options['locations'], true ), true );
+check( 'and the groups', in_array( 'Seniors', $options['groups'], true ), true );
+
+/* ------------------------------------------------------------------ */
+
+echo "\nKitchen access is organisers, or a shared password\n";
+
+$_SESSION = array();
+
+check( 'no password means organisers only', Kitchen::isProtected(), false );
+check( 'so a visitor is out', Kitchen::hasAccess(), false );
+check( 'and unlocking cannot work', Kitchen::unlock( 'anything' ), false );
+
+Kitchen::setPassword( 'kitchen-door-2026' );
+
+check( 'setting one flips it on', Kitchen::isProtected(), true );
+check( 'the wrong password is refused', Kitchen::unlock( 'wrong' ), false );
+check( 'and still leaves them out', Kitchen::hasAccess(), false );
+check( 'the right one gets in', Kitchen::unlock( 'kitchen-door-2026' ), true );
+check( 'which grants access', Kitchen::hasAccess(), true );
+
+Kitchen::lock();
+check( 'signing out revokes it', Kitchen::hasAccess(), false );
+
+Kitchen::setPassword( '' );
+check( 'clearing it goes back to organisers only', Kitchen::isProtected(), false );
+
+echo "\nDate range presets\n";
+
+freeze( '2026-08-12 09:00' ); // A Wednesday.
+
+check( 'seven days looks forward', Kitchen::resolveRange( '7days' ), array( 'from' => '2026-08-12', 'to' => '2026-08-19' ) );
+check( 'this week is Monday to Sunday', Kitchen::resolveRange( 'week' ), array( 'from' => '2026-08-10', 'to' => '2026-08-16' ) );
+check( 'this month is the calendar month', Kitchen::resolveRange( 'month' ), array( 'from' => '2026-08-01', 'to' => '2026-08-31' ) );
+check( 'last 30 days looks back', Kitchen::resolveRange( 'past' ), array( 'from' => '2026-07-13', 'to' => '2026-08-12' ) );
+check( 'everything is unbounded', Kitchen::resolveRange( 'all' ), array( 'from' => '', 'to' => '' ) );
+check( 'an unknown preset falls back to seven days', Kitchen::resolveRange( 'nonsense' ), Kitchen::resolveRange( '7days' ) );
+
+check(
+	'an explicit from overrides the preset',
+	Kitchen::filtersFromQuery( array( 'range' => 'month', 'from' => '2026-09-01' ) )['from'],
+	'2026-09-01'
+);
+
+check(
+	'and marks the range custom',
+	Kitchen::filtersFromQuery( array( 'range' => 'month', 'from' => '2026-09-01' ) )['range'],
+	'custom'
+);
+
+check(
+	'a garbage date is ignored',
+	Kitchen::filtersFromQuery( array( 'range' => 'week', 'from' => 'whenever' ) )['from'],
+	'2026-08-10'
+);
+
+check(
+	'links keep the other filters',
+	Kitchen::url( array( 'group' => 'Youth', 'range' => 'week' ), array( 'sort' => 'dish' ) ),
+	'/kitchen?group=Youth&range=week&sort=dish'
+);
+
+check(
+	'and drop the empty ones',
+	Kitchen::url( array( 'group' => '', 'dish' => 'Curry' ), array( 'sort' => 'qty' ), '/kitchen/export' ),
+	'/kitchen/export?dish=Curry&sort=qty'
+);
 
 finish();

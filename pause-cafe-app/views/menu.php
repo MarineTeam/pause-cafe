@@ -90,6 +90,12 @@ $user = Auth::user();
 											<?= null !== $item['remaining'] ? 'max="' . (int) $item['remaining'] . '"' : '' ?>>
 									</div>
 
+									<div class="field">
+										<label for="note-<?= (int) $item['id'] ?>">Note <span class="muted">(optional)</span></label>
+										<input type="text" id="note-<?= (int) $item['id'] ?>" name="note" maxlength="200"
+											placeholder="e.g. no onions">
+									</div>
+
 									<button type="submit">Add to cart</button>
 								</form>
 							<?php endif; ?>

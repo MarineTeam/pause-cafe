@@ -38,6 +38,8 @@ so on to display things. Anything that changes state belongs in a route handler.
 | `cart.php` | Editable lines, the wallet sum, and the checkout button |
 | `account.php` | Balance, order history, wallet statement, change password |
 | `order.php` | One order as a receipt |
+| `kitchen.php` | The kitchen list — filters, to-cook summary, sortable table |
+| `kitchen-locked.php` | The shared-password prompt shown to anyone not signed in |
 | `login.php` `register.php` `setup.php` | Sign in, sign up, first-run organiser |
 | `error.php` | 403, 404, 419 and anything else thrown |
 | `partials/group-select.php` | The group dropdown, used in five places — see below |

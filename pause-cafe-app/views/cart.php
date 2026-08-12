@@ -65,6 +65,9 @@ $problems = $cart['problems'];
 								<input type="number" name="qty" value="<?= (int) $line['qty'] ?>" min="1"
 									aria-label="Quantity" style="max-width:90px">
 
+								<input type="text" name="note" value="<?= e( $line['note'] ) ?>" maxlength="200"
+									aria-label="Note for this meal" placeholder="Note">
+
 								<button type="submit" class="button--quiet">Update</button>
 							</form>
 						</td>
@@ -120,6 +123,12 @@ $problems = $cart['problems'];
 
 		<form method="post" action="/checkout">
 			<?= Csrf::field() ?>
+
+			<div class="field">
+				<label for="order_note">Order notes <span class="muted">(optional)</span></label>
+				<textarea id="order_note" name="order_note" rows="2" maxlength="500"
+					placeholder="Anything the kitchen should know about the whole order"></textarea>
+			</div>
 
 			<?php if ( ! $options ) : ?>
 				<div class="flash flash--error">

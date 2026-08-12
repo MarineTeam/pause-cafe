@@ -8,6 +8,51 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.3.0 — 2026-08-12
+
+### Added
+
+- **The kitchen list at `/kitchen`.** A sortable, filterable table of every
+  ordered meal: date, pickup, dish, quantity, name, group, payment and notes.
+  Sorting is by clicking a column heading; pickup location then group stays the
+  tiebreak whatever is chosen, because that is the order food is handed out in.
+- **Filters** by date — next 7 days, this week, this month, last 30 days, or a
+  custom from/to — and by dish, pickup location and group.
+- **Shared-password access.** Cooks and servers open the list on a phone without
+  an account; organisers never see the prompt. Leaving the password unset keeps
+  it organiser-only. Set it in Settings.
+- **A to-cook summary** above the table, so the answer is "cook 12 pork" rather
+  than twelve rows to count.
+- **Notes on orders**, in two places: a note per meal ("no onions") entered
+  beside the name and group, and an order-level note at checkout like
+  WooCommerce's. Both show in the kitchen table and the CSV.
+- CSV export honouring the current filters and sort.
+
+### Changed
+
+- The admin **Kitchen report** tab now points at `/kitchen`. The old grouped
+  summary at `/admin/report` still works.
+- Uncaught throwables render an apology and are logged, rather than returning a
+  bare 500. Only `RuntimeException` messages — the deliberate, safe ones — are
+  still shown to the person.
+
+### Fixed
+
+- **Checkout was fatal**, introduced while adding the order note: the route
+  closure did not import `$post`. Caught by the end-to-end run, which now
+  asserts checkout's status code — the previous version only checked what
+  happened afterwards, so a 500 looked like an empty database rather than the
+  real cause.
+
+### Notes
+
+- The sort key is interpolated into `ORDER BY`, which cannot be a bound
+  parameter, so it is whitelisted. There is a test that passes
+  `qty; DROP TABLE orders --` and asserts the table survives.
+- The shared password is bcrypt-verified, which is the only throttle. Enough for
+  a page whose worst case is a list of who ordered lunch; anything more valuable
+  would want real rate limiting.
+
 ## 0.2.0 — 2026-08-12
 
 ### Added

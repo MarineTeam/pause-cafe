@@ -127,14 +127,20 @@ echo "Ordering"
 ITEM=$(curl -s -b $M -c $M "$BASE/" | grep -o 'name="item_id" value="[0-9]*"' | head -1 | grep -o '[0-9]\+')
 T=$(tok $M /)
 curl -s -o /dev/null -b $M -c $M -X POST "$BASE/cart/add" \
-  -d "_token=$T" -d "item_id=$ITEM" -d "qty=2" -d "person_name=Sam" -d "group_name=Youth"
+  -d "_token=$T" -d "item_id=$ITEM" -d "qty=2" -d "person_name=Sam" -d "group_name=Youth" \
+  -d "note=no onions"
 
 CART=$(curl -s -b $M -c $M "$BASE/cart")
 has "the cart shows the dish" "$CART" "BBQ pork on rice"
 has "with the line total" "$CART" '\$20\.00'
+has "and keeps the note" "$CART" 'value="no onions"'
 
 T=$(echo "$CART" | grep -o 'name="_token" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"$//')
-curl -s -o /dev/null -b $M -c $M -X POST "$BASE/checkout" -d "_token=$T"
+# Asserting the status matters: a fatal here returns 500 and every later
+# assertion just sees an empty database rather than the real cause.
+CO=$(curl -s -o /dev/null -w '%{http_code}' -b $M -c $M -X POST "$BASE/checkout" \
+  -d "_token=$T" -d "order_note=Side door please")
+want "checkout redirects rather than erroring" "$CO" "302"
 
 ACCOUNT=$(curl -s -b $M -c $M "$BASE/account")
 has "the balance is debited to \$5" "$ACCOUNT" '\$5\.00'
@@ -178,7 +184,9 @@ has "offering the wallet" "$CART" "Wallet balance"
 has "and cash on pickup" "$CART" "Pay on pickup"
 
 T=$(echo "$CART" | grep -o 'name="_token" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"$//')
-curl -s -o /dev/null -b $M -c $M -X POST "$BASE/checkout" -d "_token=$T" -d "payment_method=cod"
+CO=$(curl -s -o /dev/null -w '%{http_code}' -b $M -c $M -X POST "$BASE/checkout" \
+  -d "_token=$T" -d "payment_method=cod")
+want "the cash checkout redirects too" "$CO" "302"
 
 ACCOUNT=$(curl -s -b $M -c $M "$BASE/account")
 has "a cash order is flagged as still to pay" "$ACCOUNT" "To pay"
@@ -195,6 +203,56 @@ curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/$CODID/paid" -d "_t
 ORDERS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-08-16")
 has "marking it paid shows up" "$ORDERS" "Paid"
 hasnt "and the collect banner is gone" "$ORDERS" "still to collect"
+
+echo ""
+echo "Kitchen list"
+K=$(mktemp)   # a third jar: nobody signed in
+
+LOCKED=$(curl -s -b $K -c $K "$BASE/kitchen")
+has "with no password set it is organisers only" "$LOCKED" "for organisers only"
+hasnt "and shows no orders" "$LOCKED" "BBQ pork on rice"
+
+KITCHEN=$(curl -s -b $A -c $A "$BASE/kitchen?range=all")
+has "an organiser sees the table" "$KITCHEN" "BBQ pork on rice"
+has "with the line note" "$KITCHEN" "no onions"
+has "and the order note" "$KITCHEN" "Side door please"
+has "the name on the meal" "$KITCHEN" "Sam"
+has "the group" "$KITCHEN" "Youth"
+has "a to-cook summary" "$KITCHEN" "To cook"
+has "and sortable headings" "$KITCHEN" 'href="/kitchen?range=all&amp;sort=dish'
+
+# Dish names are matched inside <strong>, which only the table renders. The
+# filter dropdown lists every dish whatever the current filter, so a plain
+# substring check would find it there and pass for the wrong reason.
+has "filtering by location narrows it" \
+  "$(curl -s -b $A -c $A "$BASE/kitchen?range=all&location=RCC")" '<strong>Pay later pasta</strong>'
+hasnt "excluding the other campus" \
+  "$(curl -s -b $A -c $A "$BASE/kitchen?range=all&location=RCC")" '<strong>BBQ pork on rice</strong>'
+
+has "filtering by group works" \
+  "$(curl -s -b $A -c $A "$BASE/kitchen?range=all&group=Seniors")" "Pay later pasta"
+
+CSV=$(curl -s -b $A -c $A "$BASE/kitchen/export?range=all")
+has "the CSV carries the columns asked for" "$CSV" "Date,Location,Dish,Qty,Name,Group,Payment,Paid,Notes"
+has "and the note" "$CSV" "no onions"
+hasnt "with no PHP notices" "$CSV" "Deprecated"
+
+T=$(tok $A /admin/settings)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/kitchen-password" -d "_token=$T" -d "password=kitchen-door"
+
+LOCKED=$(curl -s -b $K -c $K "$BASE/kitchen")
+has "once set, visitors get a password prompt" "$LOCKED" "Enter the shared password"
+hasnt "and still no orders" "$LOCKED" "BBQ pork on rice"
+
+T=$(echo "$LOCKED" | grep -o 'name="_token" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"$//')
+curl -s -o /dev/null -b $K -c $K -X POST "$BASE/kitchen/unlock" -d "_token=$T" -d "password=wrong-one"
+hasnt "a wrong password does not get in" "$(curl -s -b $K -c $K "$BASE/kitchen")" "BBQ pork on rice"
+
+T=$(curl -s -b $K -c $K "$BASE/kitchen" | grep -o 'name="_token" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"$//')
+curl -s -o /dev/null -b $K -c $K -X POST "$BASE/kitchen/unlock" -d "_token=$T" -d "password=kitchen-door"
+has "the right one does" "$(curl -s -b $K -c $K "$BASE/kitchen?range=all")" "BBQ pork on rice"
+
+rm -f "$K"
 
 echo ""
 echo "Access control"
