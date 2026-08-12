@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Pause Cafe Menu
  * Description:       Weekly lunch menu scheduling for WooCommerce. One service date per dish; visibility, ordering cutoff and the kitchen report all derive from it.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Pause Cafe

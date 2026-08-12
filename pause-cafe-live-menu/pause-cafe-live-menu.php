@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Pause Cafe Live Menu
  * Description:       Publish the week's menu and ordering opens immediately. Closes automatically at the next Saturday cutoff, stays shut over Sunday, and reopens the moment the next menu is published.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Pause Cafe
