@@ -106,6 +106,35 @@ Implement `PauseCafe\Payments\Method` and call `Payments::register()` after
 `Payments::boot()` in `src/bootstrap.php`. Checkout, settings and the orders
 screen pick it up on their own — none of them name a method.
 
+## The kitchen list
+
+`/kitchen` is the page the cooks and servers actually use — every ordered meal
+as one sortable table: date, pickup, dish, quantity, name, group, payment and
+notes. A to-cook summary sits above it, so the answer is "cook 12 pork" rather
+than twelve rows to count.
+
+**Sorting** is by clicking a heading. Pickup location then group stays the
+tiebreak whatever column is chosen, because that is the order food is handed out
+in — sorting by dish still keeps each campus's groups together underneath.
+
+**Filters:** next 7 days, this week, this month, last 30 days, a custom from/to,
+and by dish, pickup location or group. The CSV export honours whatever is
+currently filtered and sorted.
+
+**Access.** Organisers always see it. Everyone else needs a shared password, set
+in Settings — which lets the kitchen team open it on a phone without an account.
+Leave it unset and the page stays organiser-only. It shows member names and what
+they ordered, so treat the password the way you would a door key.
+
+## Notes on orders
+
+Two kinds, both shown in the kitchen table and the CSV:
+
+- **Per meal** — "no onions", entered beside the name and group, so it travels
+  with the one dish it belongs to
+- **Per order** — a free-text box at checkout, the same idea as WooCommerce's
+  order notes
+
 ## Wallet
 
 An append-only ledger. There is no balance column anywhere — a balance is the

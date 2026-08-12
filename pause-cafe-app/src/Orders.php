@@ -121,6 +121,7 @@ class Orders {
 					'qty'         => $qty,
 					'person_name' => trim( (string) ( $line['person_name'] ?? '' ) ),
 					'group_name'  => trim( (string) ( $line['group_name'] ?? '' ) ),
+					'note'        => trim( (string) ( $line['note'] ?? '' ) ),
 				);
 			}
 
@@ -160,8 +161,8 @@ class Orders {
 
 			$insertLine = $pdo->prepare(
 				'INSERT INTO order_lines
-					(order_id, menu_item_id, item_name, location_name, qty, unit_price_cents, person_name, group_name)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+					(order_id, menu_item_id, item_name, location_name, qty, unit_price_cents, person_name, group_name, note)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
 			);
 
 			foreach ( $resolved as $line ) {
@@ -175,6 +176,7 @@ class Orders {
 						$line['item']['price_cents'],
 						$line['person_name'],
 						$line['group_name'],
+						$line['note'],
 					)
 				);
 			}
@@ -370,6 +372,129 @@ class Orders {
 		ksort( $summary );
 
 		return $summary;
+	}
+
+	/**
+	 * Columns the kitchen table may be sorted by.
+	 *
+	 * A whitelist, because the sort key arrives on the query string and is
+	 * interpolated into ORDER BY, which cannot be a bound parameter.
+	 *
+	 * @return array<string,string>
+	 */
+	public static function sortableColumns(): array {
+		return array(
+			'date'     => 'o.service_date',
+			'location' => 'ol.location_name COLLATE NOCASE',
+			'dish'     => 'ol.item_name COLLATE NOCASE',
+			'qty'      => 'ol.qty',
+			'name'     => 'ol.person_name COLLATE NOCASE',
+			'group'    => 'ol.group_name COLLATE NOCASE',
+			'payment'  => 'o.payment_method',
+			'notes'    => 'ol.note COLLATE NOCASE',
+		);
+	}
+
+	/**
+	 * Line items for the kitchen table.
+	 *
+	 * @param array  $filters from, to, dish, location, group -- any may be ''.
+	 * @param string $sort    A key of sortableColumns(). Anything else falls back
+	 *                        to location.
+	 *
+	 * @return array[]
+	 */
+	public static function lineItemsFiltered( array $filters, string $sort = 'location', string $dir = 'asc' ): array {
+		$sql = "SELECT ol.id, ol.order_id, ol.item_name, ol.location_name, ol.qty,
+					   ol.unit_price_cents, ol.person_name, ol.group_name, ol.note,
+					   o.service_date, o.payment_method, o.paid_at, o.created_at,
+					   o.note AS order_note,
+					   u.name AS account_name, u.email
+				FROM order_lines ol
+				INNER JOIN orders o ON o.id = ol.order_id
+				INNER JOIN users u ON u.id = o.user_id
+				WHERE o.status = 'confirmed'";
+
+		$params = array();
+
+		foreach (
+			array(
+				'from'     => array( 'o.service_date >= ?', 'from' ),
+				'to'       => array( 'o.service_date <= ?', 'to' ),
+				'dish'     => array( 'ol.item_name = ?', 'dish' ),
+				'location' => array( 'ol.location_name = ?', 'location' ),
+				'group'    => array( 'ol.group_name = ?', 'group' ),
+			) as $key => $clause
+		) {
+			if ( '' !== (string) ( $filters[ $key ] ?? '' ) ) {
+				$sql     .= ' AND ' . $clause[0];
+				$params[] = $filters[ $key ];
+			}
+		}
+
+		$columns = self::sortableColumns();
+		$primary = $columns[ $sort ] ?? $columns['location'];
+		$dir     = 'desc' === strtolower( $dir ) ? 'DESC' : 'ASC';
+
+		/*
+		 * Pickup location then group is the order the servers hand food out in,
+		 * so it stays the tiebreak whatever the chosen column -- sorting by dish
+		 * still keeps each campus's groups together underneath.
+		 */
+		$sql .= ' ORDER BY ' . $primary . ' ' . $dir .
+			', ol.location_name COLLATE NOCASE ASC, ol.group_name COLLATE NOCASE ASC,
+			  ol.person_name COLLATE NOCASE ASC, ol.id ASC';
+
+		$statement = Database::pdo()->prepare( $sql );
+		$statement->execute( $params );
+
+		return $statement->fetchAll();
+	}
+
+	/**
+	 * Distinct values available to filter on, from confirmed orders.
+	 *
+	 * @return array{dishes:string[],locations:string[],groups:string[]}
+	 */
+	public static function filterOptions(): array {
+		$pdo   = Database::pdo();
+		$pull  = static function ( string $column ) use ( $pdo ): array {
+			$rows = $pdo->query(
+				"SELECT DISTINCT ol.{$column}
+				 FROM order_lines ol
+				 INNER JOIN orders o ON o.id = ol.order_id
+				 WHERE o.status = 'confirmed' AND ol.{$column} != ''
+				 ORDER BY ol.{$column} COLLATE NOCASE"
+			)->fetchAll( \PDO::FETCH_COLUMN );
+
+			return array_map( 'strval', $rows );
+		};
+
+		return array(
+			'dishes'    => $pull( 'item_name' ),
+			'locations' => $pull( 'location_name' ),
+			'groups'    => $pull( 'group_name' ),
+		);
+	}
+
+	/**
+	 * Totals per dish for a set of rows, so the kitchen sees "cook 12 pork"
+	 * rather than counting twelve lines.
+	 *
+	 * @return array<string,int>
+	 */
+	public static function totalsByDish( array $rows ): array {
+		$totals = array();
+
+		foreach ( $rows as $row ) {
+			$dish = (string) $row['item_name'];
+
+			$totals[ $dish ] = ( $totals[ $dish ] ?? 0 ) + (int) $row['qty'];
+		}
+
+		ksort( $totals, SORT_NATURAL | SORT_FLAG_CASE );
+
+		return $totals;
 	}
 
 	/**

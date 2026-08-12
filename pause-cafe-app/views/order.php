@@ -27,6 +27,7 @@ use PauseCafe\Schedule;
 				<th>Pickup</th>
 				<th>For</th>
 				<th>Group</th>
+				<th>Note</th>
 				<th class="num">Qty</th>
 				<th class="num">Each</th>
 			</tr>
@@ -38,6 +39,7 @@ use PauseCafe\Schedule;
 					<td><?= e( $line['location_name'] ) ?></td>
 					<td><?= e( $line['person_name'] ) ?></td>
 					<td><?= e( $line['group_name'] ) ?></td>
+					<td class="muted"><?= e( $line['note'] ?? '' ) ?></td>
 					<td class="num"><?= (int) $line['qty'] ?></td>
 					<td class="num"><?= e( Money::format( (int) $line['unit_price_cents'] ) ) ?></td>
 				</tr>
@@ -45,7 +47,7 @@ use PauseCafe\Schedule;
 		</tbody>
 		<tfoot>
 			<tr>
-				<th colspan="5">Total</th>
+				<th colspan="6">Total</th>
 				<td class="num"><strong><?= e( Money::format( (int) $order['total_cents'] ) ) ?></strong></td>
 			</tr>
 		</tfoot>

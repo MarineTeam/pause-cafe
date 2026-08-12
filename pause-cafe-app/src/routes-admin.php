@@ -12,6 +12,7 @@ use PauseCafe\Auth;
 use PauseCafe\Blackouts;
 use PauseCafe\Csrf;
 use PauseCafe\Groups;
+use PauseCafe\Kitchen;
 use PauseCafe\Menu;
 use PauseCafe\Money;
 use PauseCafe\Orders;
@@ -590,6 +591,7 @@ $router->get(
 				'orphaned'  => Groups::orphaned(),
 				'blackouts' => Blackouts::all(),
 				'zeffyOn'   => Zeffy::isConfigured(),
+				'kitchenOn' => Kitchen::isProtected(),
 			)
 		);
 	}
@@ -695,6 +697,32 @@ $router->post(
 		Menu::deleteLocation( (int) $id );
 
 		View::flash( 'success', 'Location removed, along with its dishes.' );
+		View::redirect( '/admin/settings' );
+	}
+);
+
+$router->post(
+	'/admin/kitchen-password',
+	static function () use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$password = (string) ( $_POST['password'] ?? '' );
+
+		if ( isset( $_POST['clear'] ) ) {
+			Kitchen::setPassword( '' );
+			View::flash( 'success', 'Shared password cleared. The kitchen list is organisers only again.' );
+			View::redirect( '/admin/settings' );
+		}
+
+		if ( strlen( $password ) < 6 ) {
+			View::flash( 'error', 'The shared password needs to be at least 6 characters.' );
+			View::redirect( '/admin/settings' );
+		}
+
+		Kitchen::setPassword( $password );
+
+		View::flash( 'success', 'Shared password set. Anyone with it can now see the kitchen list.' );
 		View::redirect( '/admin/settings' );
 	}
 );

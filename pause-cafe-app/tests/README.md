@@ -13,7 +13,7 @@ each run and never touching `data/`.
 
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
-php -d extension=php_pdo_sqlite tests/test-app.php        # 118 assertions
+php -d extension=php_pdo_sqlite tests/test-app.php        # 160 assertions
 ```
 
 **`test-schedule.php`** — window resolution. Each of the three modes on its own,
@@ -30,12 +30,16 @@ renaming one moves its members while leaving past orders alone — and the payme
 register, covering a cash order staying owing until marked paid, the wallet
 being switched off entirely, and an unknown method being refused.
 
+It also covers the kitchen table: filtering by date range, dish, location and
+group; sorting, including that an injected sort key falls back to the default
+and leaves the table standing; and the shared-password access rules.
+
 ## With a server
 
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 46 assertions
+bash tests/e2e.sh                                          # 68 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token
@@ -63,9 +67,13 @@ Two habits worth keeping:
 - **Assert that a refused action changed nothing.** Several tests check the
   balance is untouched after a rejected order. A guard that throws but has
   already moved money is worse than no guard.
-- **When a test fails, work out which side is wrong.** One assertion here was
+- **When a test fails, work out which side is wrong.** Two assertions here were
   wrong rather than the code: a next-week dish is rejected on its window before
-  the mixed-date check runs, which is correct behaviour.
+  the mixed-date check runs, and a dish name filtered out of the kitchen table
+  still appears in the filter dropdown, which is what a dropdown is for.
+- **Assert the status code of anything that redirects.** A fatal in checkout
+  returned 500 and every later assertion just saw an empty database — the cause
+  was ten steps upstream of where the failures appeared.
 
 ## Not covered
 

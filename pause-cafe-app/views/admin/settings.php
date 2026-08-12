@@ -183,6 +183,37 @@ $mode     = $settings['active_mode'];
 </div>
 
 <div class="panel">
+	<h2>Kitchen list access</h2>
+	<p class="muted">
+		The kitchen list lives at <code>/kitchen</code>. Organisers always see it.
+		A shared password lets cooks and servers open it on a phone without an
+		account — leave it unset and the page stays organisers only.
+	</p>
+	<p class="muted">
+		It shows member names and what they ordered, so treat the password the way
+		you would a door key.
+	</p>
+
+	<p>
+		Currently:
+		<?php if ( $kitchenOn ) : ?>
+			<span class="pill pill--open">Shared password set</span>
+		<?php else : ?>
+			<span class="pill pill--past">Organisers only</span>
+		<?php endif; ?>
+	</p>
+
+	<form method="post" action="/admin/kitchen-password" class="field-row" style="max-width:560px">
+		<?= Csrf::field() ?>
+		<input type="password" name="password" placeholder="New shared password" autocomplete="new-password">
+		<button type="submit" class="button--quiet">Set password</button>
+		<?php if ( $kitchenOn ) : ?>
+			<button type="submit" name="clear" value="1" class="link-button" style="align-self:center">Clear it</button>
+		<?php endif; ?>
+	</form>
+</div>
+
+<div class="panel">
 	<h2>Groups</h2>
 	<p class="muted">
 		What people can pick when ordering. Keeping it to a list rather than a text

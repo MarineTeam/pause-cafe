@@ -33,6 +33,7 @@ in `public/index.php` and `routes-admin.php`; rendering lives in `views/`.
 | `Payments/CodMethod.php` | Cash on the day. Records nothing; the order carries its own owing state. |
 | `Users.php` | Accounts, authentication, the approval gate. |
 | `Groups.php` | The managed list of groups. `sanitise()` is the gate every route runs submitted values through. |
+| `Kitchen.php` | Who may see the kitchen list, and turning date presets into a from/to pair. |
 | `Money.php` | Integer cents in, formatted strings out. |
 | `Auth.php` | Session handling and the current user. |
 | `Csrf.php` | Tokens for every state-changing request. |
@@ -48,6 +49,10 @@ ledger. Floats appear only at the edges, in `Money::format()` and
 also stores the running balance so a statement reads back without re-adding
 history, but the entries are the truth. Write through `Wallet::post()` and
 nothing else.
+
+**A sort key cannot be bound.** `ORDER BY` takes no parameters, so the kitchen
+table's sort column is looked up in `Orders::sortableColumns()` and anything
+unrecognised falls back. Never interpolate a request value there directly.
 
 **A dropdown is not validation.** Groups are offered as a `<select>`, but every
 route that accepts one passes it through `Groups::sanitise()`, which returns the

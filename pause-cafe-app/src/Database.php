@@ -212,6 +212,10 @@ class Database {
 		self::addColumnIfMissing( 'orders', 'payment_method', "TEXT NOT NULL DEFAULT 'wallet'" );
 		self::addColumnIfMissing( 'orders', 'paid_at', "TEXT NOT NULL DEFAULT ''" );
 
+		// A note against one meal -- "no onions" -- as opposed to orders.note,
+		// which is about the order as a whole.
+		self::addColumnIfMissing( 'order_lines', 'note', "TEXT NOT NULL DEFAULT ''" );
+
 		self::seed();
 	}
 
