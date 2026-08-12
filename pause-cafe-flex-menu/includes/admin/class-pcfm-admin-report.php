@@ -179,6 +179,20 @@ class PCFM_Admin_Report {
 		);
 	}
 
+	/**
+	 * Writes one CSV row.
+	 *
+	 * $escape has to be passed explicitly. PHP 8.4 deprecates relying on its
+	 * default, and the deprecation notice is emitted straight into the output
+	 * stream, which corrupts the downloaded file. Empty string is both what PHP 9
+	 * will default to and the RFC 4180 behaviour.
+	 *
+	 * @param resource $handle
+	 */
+	private static function csv_row( $handle, array $fields ) {
+		fputcsv( $handle, $fields, ',', '"', '' );
+	}
+
 	public static function handle_export() {
 		if ( ! current_user_can( PCFM_Admin::CAPABILITY ) ) {
 			wp_die( esc_html__( 'You do not have permission to export orders.', 'pause-cafe-flex-menu' ) );
@@ -204,7 +218,7 @@ class PCFM_Admin_Report {
 		// Excel needs the BOM to read the Chinese dish names correctly.
 		fwrite( $out, chr( 0xEF ) . chr( 0xBB ) . chr( 0xBF ) );
 
-		fputcsv(
+		self::csv_row(
 			$out,
 			array(
 				__( 'Service date', 'pause-cafe-flex-menu' ),
@@ -219,7 +233,7 @@ class PCFM_Admin_Report {
 		);
 
 		foreach ( $rows as $row ) {
-			fputcsv(
+			self::csv_row(
 				$out,
 				array(
 					$service_date,
