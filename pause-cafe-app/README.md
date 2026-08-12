@@ -135,6 +135,31 @@ Two kinds, both shown in the kitchen table and the CSV:
 - **Per order** — a free-text box at checkout, the same idea as WooCommerce's
   order notes
 
+## Email
+
+A register of transports, chosen in Settings:
+
+| | |
+| --- | --- |
+| **Resend** | Over HTTPS with an API key. Works where outbound SMTP ports are blocked, which on shared hosting they often are. Needs a verified sending domain. |
+| **SMTP** | An existing mailbox — the church account, Gmail, Fastmail. Gmail needs an app password. |
+| **Write to a file** | Nothing is sent; messages append to `data/mail.log`. For staging, and what the tests use. |
+| **PHP mail()** | No setup, poor deliverability. |
+
+**PHP mail() is the last resort, not the default.** If the chosen transport
+fails, the message is retried through it — a confirmation that lands in a spam
+folder beats one silently dropped because an API key expired. Both failures are
+logged, and **Send a test to myself** in Settings names the transport that
+actually carried it.
+
+Three emails go out, all plain text: an order confirmation listing every meal
+with its name, group and note; a notice when an account is approved; and a
+heads-up to organisers when somebody signs up.
+
+Adding another: implement `PauseCafe\Mail\Transport` and call
+`Mailer::register()`. It declares its own configuration fields, so the settings
+screen renders a form for it without changing.
+
 ## Wallet
 
 An append-only ledger. There is no balance column anywhere — a balance is the

@@ -6,7 +6,7 @@
 declare(strict_types=1);
 
 // Kept in step with CHANGELOG.md.
-defined( 'PAUSE_CAFE_VERSION' ) || define( 'PAUSE_CAFE_VERSION', '0.3.0' );
+defined( 'PAUSE_CAFE_VERSION' ) || define( 'PAUSE_CAFE_VERSION', '0.4.0' );
 
 spl_autoload_register(
 	static function ( string $class ): void {
@@ -27,6 +27,8 @@ spl_autoload_register(
 require_once __DIR__ . '/View.php';
 
 use PauseCafe\Database;
+use PauseCafe\Mail\LogTransport;
+use PauseCafe\Mailer;
 use PauseCafe\Money;
 use PauseCafe\Payments;
 use PauseCafe\Schedule;
@@ -62,6 +64,9 @@ Database::migrate();
 // Registers the built-in payment methods. A site adding its own would call
 // Payments::register() after this line.
 Payments::boot();
+
+LogTransport::configure( dirname( (string) $config['database'] ) . '/mail.log' );
+Mailer::boot();
 
 if ( ! function_exists( 'e' ) ) {
 	/**

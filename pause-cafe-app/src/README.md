@@ -38,6 +38,11 @@ in `public/index.php` and `routes-admin.php`; rendering lives in `views/`.
 | `Auth.php` | Session handling and the current user. |
 | `Csrf.php` | Tokens for every state-changing request. |
 | `Zeffy.php` | Webhook authorisation, payload extraction, wallet crediting, API reconciliation. |
+| `Mailer.php` | The register of email transports, and the one entry point for sending. Falls back to mail(). |
+| `Mail/Transport.php` | The interface an email transport implements. |
+| `Mail/Message.php` | One email and the MIME it becomes. Strips newlines from every header field. |
+| `Mail/{Php,Smtp,Resend,Log}Transport.php` | The four built-in ways to send. |
+| `Notifications.php` | The app's actual emails. Every method fails quietly. |
 
 ## Three things to know before changing anything
 
@@ -64,6 +69,19 @@ front with `BEGIN IMMEDIATE`, which PDO cannot issue through
 transaction, so `commit()` and `rollBack()` would throw — hence the private
 `begin`/`commit`/`rollback` trio, which must be used as a set. `Wallet::post()`
 takes `$ownTransaction = false` when called from inside it.
+
+**Sending email must never break the thing that triggered it.** `Notifications`
+returns a failed `Result` rather than throwing; an order that already took
+payment cannot be undone by a mail server being down.
+
+## Adding an email transport
+
+1. Implement `PauseCafe\Mail\Transport` in `src/Mail/`
+2. `Mailer::register( new YourTransport() )` after `Mailer::boot()` in `bootstrap.php`
+
+`configFields()` is what the settings screen renders, so declaring a field is
+all it takes to get a form control and have the value saved. `send()` must not
+throw — return a failed `Result` so the caller can fall back.
 
 ## Adding a payment method
 

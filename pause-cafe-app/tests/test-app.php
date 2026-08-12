@@ -16,11 +16,49 @@ require dirname( __DIR__ ) . '/src/bootstrap.php';
 
 use PauseCafe\Groups;
 use PauseCafe\Kitchen;
+use PauseCafe\Mail\LogTransport;
+use PauseCafe\Mail\Message;
+use PauseCafe\Mail\ResendTransport;
+use PauseCafe\Mail\Result;
+use PauseCafe\Mail\SmtpTransport;
+use PauseCafe\Mail\Transport;
+use PauseCafe\Mailer;
 use PauseCafe\Menu;
 use PauseCafe\Money;
+use PauseCafe\Notifications;
 use PauseCafe\Orders;
 use PauseCafe\Payments;
 use PauseCafe\Schedule;
+
+/**
+ * A transport that never works, so the fallback path can be exercised.
+ */
+class AlwaysFailsTransport implements Transport {
+
+	public function id(): string {
+		return 'always-fails';
+	}
+
+	public function label(): string {
+		return 'Always fails';
+	}
+
+	public function description(): string {
+		return 'For tests only.';
+	}
+
+	public function isConfigured(): bool {
+		return true;
+	}
+
+	public function configFields(): array {
+		return array();
+	}
+
+	public function send( Message $message, string $fromName, string $fromEmail ): Result {
+		return Result::failed( $this->id(), 'Nope.' );
+	}
+}
 use PauseCafe\Settings;
 use PauseCafe\Users;
 use PauseCafe\Wallet;
@@ -687,5 +725,165 @@ check(
 	Kitchen::url( array( 'group' => '', 'dish' => 'Curry' ), array( 'sort' => 'qty' ), '/kitchen/export' ),
 	'/kitchen/export?dish=Curry&sort=qty'
 );
+
+/* ------------------------------------------------------------------ */
+
+echo "\nBuilding an email\n";
+
+$msg = Message::make( 'sam@example.org', 'Sam Member', 'Lunch is ready', "Line one\nLine two" );
+
+check( 'the address survives', $msg->toEmail, 'sam@example.org' );
+check( 'the display name is quoted', $msg->formattedTo(), '"Sam Member" <sam@example.org>' );
+
+// A newline in any header field is how an injected Bcc gets added.
+$injected = Message::make(
+	"sam@example.org\r\nBcc: everyone@example.org",
+	"Sam\nX-Evil: yes",
+	"Subject\r\nBcc: someone@example.org",
+	'body'
+);
+
+check( 'newlines are stripped from the address', $injected->toEmail, 'sam@example.orgBcc: everyone@example.org' );
+check( 'and from the name', $injected->toName, 'SamX-Evil: yes' );
+check( 'and from the subject', $injected->subject, 'SubjectBcc: someone@example.org' );
+check( 'so the raw message grows no extra headers', substr_count( $injected->raw( 'Cafe', 'a@b.co' ), "\r\nBcc:" ), 0 );
+
+check( 'an ASCII subject is left alone', $msg->encodeSubject( 'Lunch' ), 'Lunch' );
+check( 'a Chinese subject is encoded', $msg->encodeSubject( '叉燒飯' ), '=?UTF-8?B?' . base64_encode( '叉燒飯' ) . '?=' );
+
+$raw = $msg->raw( 'Pause Cafe', 'lunch@example.org' );
+
+check( 'the raw message carries From', false !== strpos( $raw, 'From: "Pause Cafe" <lunch@example.org>' ), true );
+check( 'and To', false !== strpos( $raw, 'To: "Sam Member" <sam@example.org>' ), true );
+check( 'and is plain text without an HTML part', false !== strpos( $raw, 'text/plain' ), true );
+check( 'with CRLF line endings', false !== strpos( $raw, "Line one\r\nLine two" ), true );
+
+$both = Message::make( 'a@b.co', 'A', 'Subject', 'plain', '<p>rich</p>' );
+
+check( 'adding HTML makes it multipart', false !== strpos( $both->raw( 'C', 'c@d.co' ), 'multipart/alternative' ), true );
+
+echo "\nSMTP protocol handling\n";
+
+check( 'a simple reply parses', SmtpTransport::parseReply( "250 OK\r\n" ), array( 'code' => 250, 'text' => 'OK' ) );
+check(
+	'a multi-line reply uses the last line',
+	SmtpTransport::parseReply( "250-mail.example.org\r\n250-SIZE 35882577\r\n250 HELP\r\n" ),
+	array( 'code' => 250, 'text' => 'HELP' )
+);
+check( 'an error code comes through', SmtpTransport::parseReply( "535 auth failed\r\n" )['code'], 535 );
+check( 'nonsense reads as code zero', SmtpTransport::parseReply( "who knows\r\n" )['code'], 0 );
+
+// A line of a single dot would otherwise end the DATA block early.
+check( 'a leading dot is doubled', SmtpTransport::stuffDots( "hello\r\n.\r\nworld" ), "hello\r\n..\r\nworld" );
+check( 'including at the very start', SmtpTransport::stuffDots( '.hidden' ), '..hidden' );
+check( 'and ordinary text is untouched', SmtpTransport::stuffDots( "a\r\nb" ), "a\r\nb" );
+
+echo "\nResend error messages say what to do\n";
+
+check(
+	'a bad key is named as such',
+	false !== strpos( ResendTransport::explain( 401, '{"message":"Invalid API key"}' ), 'rejected the API key' ),
+	true
+);
+check(
+	'an unverified domain is named as such',
+	false !== strpos( ResendTransport::explain( 422, '{}' ), 'not verified' ),
+	true
+);
+
+echo "\nSending goes through the chosen transport\n";
+
+Settings::setMany( array( 'mail_enabled' => 'yes', 'mail_transport' => 'log' ) );
+
+$logPath = LogTransport::path();
+
+if ( is_file( $logPath ) ) {
+	unlink( $logPath );
+}
+
+check( 'four transports are registered', array_keys( Mailer::all() ), array( 'php', 'smtp', 'resend', 'log' ) );
+check( 'the selected one is used', Mailer::selectedId(), 'log' );
+
+$result = Mailer::send( Message::make( 'sam@example.org', 'Sam', 'Hello', 'Body text' ) );
+
+check( 'it reports success', $result->ok, true );
+check( 'naming the transport', $result->transport, 'log' );
+check( 'and the message reached the file', false !== strpos( (string) file_get_contents( $logPath ), 'Body text' ), true );
+
+check(
+	'an invalid address is refused before any transport runs',
+	Mailer::send( Message::make( 'not-an-address', 'X', 'Hi', 'Body' ) )->ok,
+	false
+);
+
+Settings::set( 'mail_enabled', 'no' );
+check( 'switching email off stops sends', Mailer::send( Message::make( 'sam@example.org', 'S', 'Hi', 'B' ) )->ok, false );
+Settings::set( 'mail_enabled', 'yes' );
+
+check( 'an unknown transport falls back to php', ( static function () {
+	Settings::set( 'mail_transport', 'carrier-pigeon' );
+	$id = Mailer::selectedId();
+	Settings::set( 'mail_transport', 'log' );
+
+	return $id;
+} )(), 'php' );
+
+echo "\nA failing transport falls back to mail()\n";
+
+Mailer::register( new AlwaysFailsTransport() );
+Settings::set( 'mail_transport', 'always-fails' );
+
+check( 'the broken one is selected', Mailer::selectedId(), 'always-fails' );
+
+$fallbackResult = Mailer::send( Message::make( 'sam@example.org', 'Sam', 'Hello', 'Body' ) );
+
+// mail() is not available in this environment, so the fallback is expected to
+// fail too -- what matters is that it was attempted and both reasons surface.
+check( 'the failure names the original transport', $fallbackResult->transport, 'always-fails' );
+check( 'and explains the first failure', false !== strpos( $fallbackResult->message, 'Nope' ), true );
+check( 'and says the fallback was tried', false !== strpos( $fallbackResult->message, 'fallback' ), true );
+
+Settings::set( 'mail_transport', 'log' );
+
+echo "\nThe app's own emails\n";
+
+if ( is_file( $logPath ) ) {
+	unlink( $logPath );
+}
+
+// The date-preset checks above left the clock in August; this dish is served in
+// October, so wind forward into its ordering window.
+freeze( '2026-10-07 10:00' );
+
+$mailOrder = Orders::place(
+	$memberId,
+	array( array( 'item_id' => $kMarine, 'qty' => 1, 'person_name' => 'Ada', 'group_name' => 'Youth', 'note' => 'extra gravy' ) ),
+	null,
+	'Ring the bell'
+);
+
+Notifications::orderPlaced( $mailOrder );
+
+$log = (string) file_get_contents( $logPath );
+
+check( 'the confirmation goes to the account holder', false !== strpos( $log, 'sam@example.org' ), true );
+check( 'names the dish', false !== strpos( $log, 'Roast dinner' ), true );
+check( 'names who it is for', false !== strpos( $log, 'Ada (Youth)' ), true );
+check( 'carries the line note', false !== strpos( $log, 'extra gravy' ), true );
+check( 'carries the order note', false !== strpos( $log, 'Ring the bell' ), true );
+check( 'and states the total', false !== strpos( $log, Money::format( 1100 ) ), true );
+
+unlink( $logPath );
+Notifications::accountApproved( $memberId );
+check( 'approval tells them they can order', false !== strpos( (string) file_get_contents( $logPath ), 'approved' ), true );
+
+unlink( $logPath );
+$registered = Users::create( 'newcomer@example.org', 'a-fresh-password', 'New Comer', '' );
+Notifications::newRegistration( $registered );
+
+$log = (string) file_get_contents( $logPath );
+
+check( 'organisers hear about a sign-up', false !== strpos( $log, 'admin@example.org' ), true );
+check( 'and are told who', false !== strpos( $log, 'New Comer' ), true );
 
 finish();

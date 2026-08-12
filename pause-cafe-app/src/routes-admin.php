@@ -13,8 +13,10 @@ use PauseCafe\Blackouts;
 use PauseCafe\Csrf;
 use PauseCafe\Groups;
 use PauseCafe\Kitchen;
+use PauseCafe\Mailer;
 use PauseCafe\Menu;
 use PauseCafe\Money;
+use PauseCafe\Notifications;
 use PauseCafe\Orders;
 use PauseCafe\Payments;
 use PauseCafe\Schedule;
@@ -114,15 +116,24 @@ $router->post(
 			View::redirect( '/admin/users' );
 		}
 
+		$wasApproved = 1 === (int) $target['is_approved'];
+		$nowApproved = isset( $_POST['is_approved'] );
+
 		Users::update(
 			$userId,
 			array(
 				'name'        => $post( 'name' ),
 				'group_name'  => Groups::sanitise( $post( 'group_name' ) ),
 				'role'        => $role,
-				'is_approved' => isset( $_POST['is_approved'] ) ? 1 : 0,
+				'is_approved' => $nowApproved ? 1 : 0,
 			)
 		);
+
+		// Only on the transition, so re-saving an approved account does not tell
+		// them again every time.
+		if ( ! $wasApproved && $nowApproved ) {
+			Notifications::accountApproved( $userId );
+		}
 
 		if ( '' !== ( $_POST['password'] ?? '' ) ) {
 			if ( strlen( (string) $_POST['password'] ) < 8 ) {
@@ -592,6 +603,7 @@ $router->get(
 				'blackouts' => Blackouts::all(),
 				'zeffyOn'   => Zeffy::isConfigured(),
 				'kitchenOn' => Kitchen::isProtected(),
+				'mailers'   => Mailer::all(),
 			)
 		);
 	}
@@ -697,6 +709,73 @@ $router->post(
 		Menu::deleteLocation( (int) $id );
 
 		View::flash( 'success', 'Location removed, along with its dishes.' );
+		View::redirect( '/admin/settings' );
+	}
+);
+
+$router->post(
+	'/admin/mail',
+	static function () use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$transport = $post( 'mail_transport' );
+
+		Settings::setMany(
+			array(
+				'mail_enabled'    => isset( $_POST['mail_enabled'] ) ? 'yes' : 'no',
+				'mail_transport'  => Mailer::get( $transport ) ? $transport : 'php',
+				'mail_from_name'  => $post( 'mail_from_name' ),
+				'mail_from_email' => $post( 'mail_from_email' ),
+			)
+		);
+
+		/*
+		 * Fields come from each transport rather than a fixed list, so adding a
+		 * transport does not mean editing this handler.
+		 */
+		foreach ( Mailer::all() as $candidate ) {
+			foreach ( $candidate->configFields() as $key => $field ) {
+				if ( ! array_key_exists( $key, $_POST ) ) {
+					continue;
+				}
+
+				$value = trim( (string) $_POST[ $key ] );
+
+				// A blank password box means "leave it alone", not "erase it" --
+				// the form never renders the stored value back.
+				if ( 'password' === $field['type'] && '' === $value ) {
+					continue;
+				}
+
+				Settings::set( $key, $value );
+			}
+		}
+
+		View::flash( 'success', 'Email settings saved.' );
+		View::redirect( '/admin/settings' );
+	}
+);
+
+$router->post(
+	'/admin/mail/test',
+	static function () use ( $requireAdmin ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$admin  = Auth::user();
+		$result = Notifications::test( (string) $admin['email'], (string) $admin['name'] );
+
+		if ( $result->ok ) {
+			View::flash(
+				'success',
+				'Test sent to ' . $admin['email'] . ' via ' . Mailer::label( $result->transport ) . '. ' .
+				( $result->viaFallback ? 'The chosen transport failed, so PHP mail() was used instead.' : $result->message )
+			);
+		} else {
+			View::flash( 'error', 'Could not send: ' . $result->message );
+		}
+
 		View::redirect( '/admin/settings' );
 	}
 );
