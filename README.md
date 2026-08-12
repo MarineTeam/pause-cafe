@@ -3,11 +3,24 @@
 Weekly lunch menu ordering for the church, running on WordPress + WooCommerce at
 [pause-cafe.in](https://www.pause-cafe.in/).
 
-This repository holds three plugins that solve the same problem at different
-levels of ambition. **Install exactly one.** Each decides whether a dish is
-buyable, so two running at once would have competing filters disagreeing.
-`pause-cafe-flex-menu` refuses to load if either of the others is active, and
-`pause-cafe-live-menu` refuses to load beside `pause-cafe-menu`.
+This repository holds two things:
+
+- **[`pause-cafe-app/`](pause-cafe-app/README.md)** — the whole system as its own
+  small website. No WordPress, no WooCommerce: PHP and one SQLite file. Accounts,
+  a prepaid wallet, Zeffy top-ups, all three ordering modes, and a kitchen
+  report.
+- **Three WordPress plugins** that add scheduling to the existing WooCommerce
+  site, at different levels of ambition.
+
+The app and the plugins are alternatives, not companions — the app replaces the
+WordPress site rather than extending it.
+
+## The plugins
+
+**Install exactly one.** Each decides whether a dish is buyable, so two running
+at once would have competing filters disagreeing. `pause-cafe-flex-menu` refuses
+to load if either of the others is active, and `pause-cafe-live-menu` refuses to
+load beside `pause-cafe-menu`.
 
 None of them replaces the storefront, the accounts, or the wallet.
 
