@@ -20,6 +20,7 @@ use PauseCafe\Groups;
 use PauseCafe\Kitchen;
 use PauseCafe\Menu;
 use PauseCafe\Money;
+use PauseCafe\Notifications;
 use PauseCafe\Orders;
 use PauseCafe\Payments;
 use PauseCafe\Router;
@@ -213,12 +214,16 @@ $router->post(
 		}
 
 		try {
-			Users::create(
+			$newUserId = Users::create(
 				$post( 'email' ),
 				(string) ( $_POST['password'] ?? '' ),
 				$post( 'name' ),
 				Groups::sanitise( $post( 'group_name' ) )
 			);
+
+			// Nobody is waiting on this, and a mail failure must not turn a
+			// successful sign-up into an error page.
+			Notifications::newRegistration( $newUserId );
 
 			View::flash( 'success', 'Thanks. An organiser will approve your account, and then you can order.' );
 			View::redirect( '/login' );
@@ -373,6 +378,10 @@ $router->post(
 			);
 
 			Cart::clear();
+
+			// After the order is safely committed: a mail failure must not undo
+			// an order that already took payment.
+			Notifications::orderPlaced( $orderId );
 
 			$order = Orders::find( $orderId );
 

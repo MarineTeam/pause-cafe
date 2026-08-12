@@ -183,6 +183,98 @@ $mode     = $settings['active_mode'];
 </div>
 
 <div class="panel">
+	<h2>Email</h2>
+	<p class="muted">
+		Used for order confirmations, approval notices and a heads-up when someone
+		signs up. If the chosen way of sending fails, the message is retried
+		through PHP's mail() so it is not silently dropped.
+	</p>
+
+	<form method="post" action="/admin/mail">
+		<?= Csrf::field() ?>
+
+		<div class="field">
+			<label>
+				<input type="checkbox" name="mail_enabled" value="1"
+					<?= 'no' !== $settings['mail_enabled'] ? 'checked' : '' ?>>
+				Send email
+			</label>
+		</div>
+
+		<div class="field-row">
+			<div>
+				<label for="mail_from_name">From name</label>
+				<input type="text" id="mail_from_name" name="mail_from_name"
+					value="<?= e( $settings['mail_from_name'] ) ?>" placeholder="Pause Cafe">
+			</div>
+			<div>
+				<label for="mail_from_email">From address</label>
+				<input type="email" id="mail_from_email" name="mail_from_email"
+					value="<?= e( $settings['mail_from_email'] ) ?>" placeholder="lunch@example.org">
+				<p class="help">Has to be an address the sending service is allowed to use.</p>
+			</div>
+		</div>
+
+		<h3>How to send</h3>
+
+		<?php foreach ( $mailers as $mailerId => $mailer ) : ?>
+			<div class="field">
+				<label>
+					<input type="radio" name="mail_transport" value="<?= e( $mailerId ) ?>"
+						<?= $mailerId === $settings['mail_transport'] ? 'checked' : '' ?>>
+					<?= e( $mailer->label() ) ?>
+					<?php if ( ! $mailer->isConfigured() ) : ?>
+						<span class="pill pill--closed">Not set up</span>
+					<?php endif; ?>
+				</label>
+				<p class="help" style="margin-left:24px"><?= e( $mailer->description() ) ?></p>
+
+				<?php if ( $mailer->configFields() ) : ?>
+					<div class="field-row" style="margin-left:24px">
+						<?php foreach ( $mailer->configFields() as $key => $field ) : ?>
+							<div>
+								<label for="<?= e( $key ) ?>"><?= e( $field['label'] ) ?></label>
+
+								<?php if ( 'select' === $field['type'] ) : ?>
+									<select id="<?= e( $key ) ?>" name="<?= e( $key ) ?>">
+										<?php foreach ( $field['options'] as $value => $optionLabel ) : ?>
+											<option value="<?= e( $value ) ?>"
+												<?= $value === \PauseCafe\Settings::get( $key ) ? 'selected' : '' ?>>
+												<?= e( $optionLabel ) ?>
+											</option>
+										<?php endforeach; ?>
+									</select>
+								<?php elseif ( 'password' === $field['type'] ) : ?>
+									<input type="password" id="<?= e( $key ) ?>" name="<?= e( $key ) ?>"
+										autocomplete="new-password"
+										placeholder="<?= '' !== \PauseCafe\Settings::get( $key ) ? 'Set — leave blank to keep' : 'Not set' ?>">
+								<?php else : ?>
+									<input type="<?= 'number' === $field['type'] ? 'number' : 'text' ?>"
+										id="<?= e( $key ) ?>" name="<?= e( $key ) ?>"
+										value="<?= e( \PauseCafe\Settings::get( $key ) ) ?>">
+								<?php endif; ?>
+
+								<?php if ( ! empty( $field['help'] ) ) : ?>
+									<p class="help"><?= e( $field['help'] ) ?></p>
+								<?php endif; ?>
+							</div>
+						<?php endforeach; ?>
+					</div>
+				<?php endif; ?>
+			</div>
+		<?php endforeach; ?>
+
+		<button type="submit">Save email settings</button>
+	</form>
+
+	<form method="post" action="/admin/mail/test" style="margin-top:16px">
+		<?= Csrf::field() ?>
+		<button type="submit" class="button--quiet">Send a test to myself</button>
+		<p class="help">Save first — the test uses the saved settings.</p>
+	</form>
+</div>
+
+<div class="panel">
 	<h2>Kitchen list access</h2>
 	<p class="muted">
 		The kitchen list lives at <code>/kitchen</code>. Organisers always see it.

@@ -36,6 +36,14 @@ class Settings {
 			'menu_heading'             => 'Sunday Menu',
 			'menu_note'                => 'All our meats are either Non-Medicated and or Organic.',
 
+			// Email. Transport-specific keys (smtp_*, resend_*) are not listed:
+			// each transport reads its own with a sensible fallback, so adding one
+			// does not mean editing this list.
+			'mail_enabled'             => 'yes',
+			'mail_transport'           => 'php',
+			'mail_from_name'           => '',
+			'mail_from_email'          => '',
+
 			// People must be approved by an admin before they can order.
 			'allow_registration'       => 'yes',
 

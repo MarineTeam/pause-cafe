@@ -25,6 +25,13 @@ hasnt(){ if echo "$2" | grep -q "$3"; then bad "$1" "unexpectedly present: $3"; 
 
 # Grabs a CSRF token from any page. Every form on a page shares one token.
 tok()  { curl -s -b "$1" -c "$1" "$BASE$2" | grep -o 'name="_token" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"$//'; }
+
+# Collapses newlines and runs of whitespace, so an assertion about two adjacent
+# HTML attributes does not depend on where the template happens to wrap.
+# \r is in the set deliberately: on Windows the templates are checked out with
+# CRLF, so the rendered HTML carries carriage returns that are invisible in a
+# terminal and would otherwise sit between the attributes.
+flat() { printf '%s' "$1" | tr '\r\n\t' '   ' | tr -s ' '; }
 code() { curl -s -o /dev/null -w '%{http_code}' -b "$1" -c "$1" "$BASE$2"; }
 
 echo ""
@@ -42,6 +49,25 @@ echo "CSRF"
 BADPOST=$(curl -s -o /dev/null -w '%{http_code}' -b $A -c $A -X POST "$BASE/admin/menu/save" \
   -d "_token=obviously-wrong" -d "name=Sneaky" -d "location_id=1")
 want "a bad token is rejected" "$BADPOST" "419"
+
+echo ""
+echo "Email settings"
+# Switched to the log transport before anything that sends, so the run never
+# reaches for a real mail server and every message can be read back.
+T=$(tok $A /admin/settings)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/mail" \
+  -d "_token=$T" -d "mail_enabled=1" -d "mail_transport=log" \
+  -d "mail_from_name=Pause Cafe" -d "mail_from_email=lunch@example.org"
+
+SETTINGS=$(curl -s -b $A -c $A "$BASE/admin/settings")
+has "every transport is offered" "$SETTINGS" 'value="resend"'
+has "including SMTP" "$SETTINGS" 'value="smtp"'
+has "whose fields are rendered from the transport" "$SETTINGS" 'name="smtp_host"'
+has "and the log transport is now selected" "$(flat "$SETTINGS")" 'value="log" checked'
+
+T=$(tok $A /admin/settings)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/mail/test" -d "_token=$T"
+has "a test message is written" "$(cat data/mail.log 2>/dev/null)" "test email"
 
 echo ""
 echo "Groups"
@@ -253,6 +279,17 @@ curl -s -o /dev/null -b $K -c $K -X POST "$BASE/kitchen/unlock" -d "_token=$T" -
 has "the right one does" "$(curl -s -b $K -c $K "$BASE/kitchen?range=all")" "BBQ pork on rice"
 
 rm -f "$K"
+
+echo ""
+echo "Email actually sent"
+MAILLOG=$(cat data/mail.log 2>/dev/null)
+has "organisers were told about the sign-up" "$MAILLOG" "New sign-up: Sam Member"
+has "sent to the organiser" "$MAILLOG" "ada@example.org"
+has "the member was told once approved" "$MAILLOG" "account is ready"
+has "and got an order confirmation" "$MAILLOG" "Order confirmed"
+has "naming the dish" "$MAILLOG" "BBQ pork on rice"
+has "and the note on the meal" "$MAILLOG" "no onions"
+has "from the configured address" "$MAILLOG" "lunch@example.org"
 
 echo ""
 echo "Access control"

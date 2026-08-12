@@ -8,6 +8,39 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.4.0 — 2026-08-12
+
+### Added
+
+- **Email, as a register of transports** chosen in Settings: **Resend** over
+  HTTPS, **SMTP** for an existing mailbox, **write to a file** for staging, and
+  **PHP mail()**. Each declares its own configuration fields, so the settings
+  screen grows a form for a new transport without that screen changing.
+- **PHP mail() is the last resort.** If the chosen transport fails, the message
+  is retried through it. A confirmation that lands in a spam folder beats one
+  silently dropped because an API key expired. Both failures are logged and the
+  admin is told which happened.
+- **The emails themselves**, all plain text: an order confirmation listing every
+  meal with its name, group and note; a notice when an account is approved; and
+  a heads-up to organisers when somebody signs up.
+- **Send a test to myself** in Settings, which names the transport that carried
+  it and says so when the fallback was used.
+
+### Notes
+
+- Every field that reaches a header is stripped of newlines. A newline in a
+  subject or address is how a header injection becomes a Bcc to somebody else's
+  list, and there is a test asserting a crafted message grows no extra headers.
+- Non-ASCII subjects are base64-encoded, so a Chinese dish name in a subject
+  line arrives intact rather than as mojibake.
+- The SMTP client is written against sockets rather than a library, keeping the
+  app free of Composer. Reply parsing and DATA dot-stuffing are covered by
+  tests; the socket conversation itself is not, since it needs a real server.
+- Notifications never throw. An email that cannot be sent must not undo an order
+  that already took payment.
+- Saving email settings leaves a blank password box alone rather than erasing
+  the stored secret, and the form never renders a stored password back.
+
 ## 0.3.0 — 2026-08-12
 
 ### Added

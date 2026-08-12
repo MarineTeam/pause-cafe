@@ -13,7 +13,7 @@ each run and never touching `data/`.
 
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
-php -d extension=php_pdo_sqlite tests/test-app.php        # 160 assertions
+php -d extension=php_pdo_sqlite tests/test-app.php        # 203 assertions
 ```
 
 **`test-schedule.php`** — window resolution. Each of the three modes on its own,
@@ -34,12 +34,17 @@ It also covers the kitchen table: filtering by date range, dish, location and
 group; sorting, including that an injected sort key falls back to the default
 and leaves the table standing; and the shared-password access rules.
 
+And email: header-injection stripping, subject encoding, MIME shape, SMTP reply
+parsing and dot-stuffing, and the fallback to mail() when the chosen transport
+fails — driven by a stub transport that always does. The log transport is
+selected throughout, so a run never reaches for a mail server.
+
 ## With a server
 
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 68 assertions
+bash tests/e2e.sh                                          # 80 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token
@@ -74,6 +79,10 @@ Two habits worth keeping:
 - **Assert the status code of anything that redirects.** A fatal in checkout
   returned 500 and every later assertion just saw an empty database — the cause
   was ten steps upstream of where the failures appeared.
+- **Flatten HTML before matching two adjacent attributes.** `flat()` exists
+  because templates wrap, and because on Windows they are checked out with CRLF
+  — so the rendered page carries carriage returns that are invisible in a
+  terminal and sit right where you expected a space.
 
 ## Not covered
 
