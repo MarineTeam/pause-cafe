@@ -7,6 +7,8 @@ It does what the three plugins do, plus the parts WooCommerce was providing —
 accounts, a prepaid wallet, checkout — sized for a few dozen orders a week
 rather than a shop.
 
+Version history is in [CHANGELOG.md](CHANGELOG.md).
+
 ## Requirements
 
 - PHP 8.1 or newer with `pdo_sqlite`

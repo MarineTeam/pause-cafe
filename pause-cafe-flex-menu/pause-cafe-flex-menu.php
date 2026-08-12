@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Pause Cafe Flex Menu
  * Description:       Flexible menu scheduling for WooCommerce. Several menus at once, each opening on a plan or on publish, with per-dish overrides, portion limits, blackout dates and per-location cutoffs.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Pause Cafe

@@ -4,6 +4,8 @@ WordPress plugin. Menu scheduling for WooCommerce with several menus at once,
 either open mode per menu, per-dish overrides, portion limits, blackout dates
 and per-location cutoffs.
 
+Version history is in [CHANGELOG.md](CHANGELOG.md).
+
 The most capable of the three, and the largest. If a single weekly menu on a
 fixed rhythm is all you need, `pause-cafe-menu` or `pause-cafe-live-menu` will
 be less to look after.

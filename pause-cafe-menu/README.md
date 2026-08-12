@@ -3,6 +3,8 @@
 WordPress plugin. Weekly lunch menu scheduling for WooCommerce, planned a month
 ahead.
 
+Version history is in [CHANGELOG.md](CHANGELOG.md).
+
 Each dish carries one field — a **service date**, the Sunday it is served — and
 everything else is derived from it. There is no per-dish timer to configure, and
 two dishes in the same week cannot disagree about when ordering closes.

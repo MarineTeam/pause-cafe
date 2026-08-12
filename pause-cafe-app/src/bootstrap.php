@@ -5,6 +5,9 @@
 
 declare(strict_types=1);
 
+// Kept in step with CHANGELOG.md.
+defined( 'PAUSE_CAFE_VERSION' ) || define( 'PAUSE_CAFE_VERSION', '0.2.0' );
+
 spl_autoload_register(
 	static function ( string $class ): void {
 		$prefix = 'PauseCafe\\';

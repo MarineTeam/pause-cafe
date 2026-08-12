@@ -3,6 +3,8 @@
 WordPress plugin. Weekly lunch menu scheduling for WooCommerce, with no planning
 ahead.
 
+Version history is in [CHANGELOG.md](CHANGELOG.md).
+
 **Publishing is the schedule.** A dish's ordering window opens the instant it
 goes live and runs to the first cutoff after that. Publishing again opens a
 fresh window. Nothing is dated by hand and nothing is set up in advance.
