@@ -60,8 +60,49 @@ Each cart line carries a **name** and a **group**, so one account can order for
 several people and the cook list reads the way the servers need it. Both default
 to the account holder's own name and group.
 
-Checkout debits the wallet. The order and the debit are written in one
-transaction: neither can happen without the other.
+Groups are a list organisers manage in Settings, not a text box. Free text
+drifts — "Youth", "youth" and a typo become three separate rows on the cook
+list. Every place a group is chosen offers the list, and the server checks the
+submitted value against it regardless of what the form sent. Renaming a group
+moves everyone in it; past orders keep the name they were placed under, which is
+what a receipt should do. Removing a group leaves the people in it alone and
+flags them in Settings rather than silently clearing their group.
+
+Until at least one group exists the field does not appear at all.
+
+## Paying
+
+Payment methods are a register, not a hardcoded wallet. Two ship with the app,
+and organisers switch them on and off in Settings:
+
+| Method | | |
+| --- | --- | --- |
+| **Wallet balance** | Taken from what has already been topped up | Settles at once |
+| **Pay on pickup** | Cash on the day | Order stays **owing** until an organiser marks it paid |
+
+If only one is enabled it is used silently with no choice shown. At least one
+has to stay on — the settings screen refuses to turn them all off, since that
+would leave nobody able to order and no way to undo it from the storefront.
+
+**The wallet is entirely optional.** Switch it off and the balance, the wallet
+statement and the top-up wording disappear from member accounts — unless an
+account still holds money, which stays visible until it is settled rather than
+quietly vanishing.
+
+Unpaid orders are listed on the orders screen with a running total still to
+collect, so nothing is handed over unrecorded.
+
+An order and its payment are written in one transaction: neither can happen
+without the other. Cancelling asks the method to reverse itself — a wallet order
+gets a refund entry; a cash order that was never collected has nothing to
+return, and one that was is settled in person, which the cancellation notice
+says rather than inventing a ledger entry.
+
+### Adding another method
+
+Implement `PauseCafe\Payments\Method` and call `Payments::register()` after
+`Payments::boot()` in `src/bootstrap.php`. Checkout, settings and the orders
+screen pick it up on their own — none of them name a method.
 
 ## Wallet
 
