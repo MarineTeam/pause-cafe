@@ -50,6 +50,18 @@ include __DIR__ . '/_tabs.php';
 				</select>
 			</div>
 
+			<?php if ( count( $methods ) > 1 ) : ?>
+				<div class="field" style="max-width:420px">
+					<label for="payment_method">Paying by</label>
+					<select id="payment_method" name="payment_method">
+						<?php foreach ( $methods as $methodId => $method ) : ?>
+							<option value="<?= e( $methodId ) ?>"><?= e( $method->label() ) ?></option>
+						<?php endforeach; ?>
+					</select>
+					<p class="help">A balance that will not cover it is not a blocker here — the order records what is owed.</p>
+				</div>
+			<?php endif; ?>
+
 			<div class="field" style="max-width:420px">
 				<label for="note">Note</label>
 				<input type="text" id="note" name="note" placeholder="Phoned in Saturday evening">
@@ -88,8 +100,14 @@ include __DIR__ . '/_tabs.php';
 									placeholder="Name on this meal" aria-label="Name">
 							</td>
 							<td>
-								<input type="text" name="line[<?= (int) $item['id'] ?>][group_name]"
-									placeholder="Group" aria-label="Group">
+								<?php
+								$gs = array(
+									'name'  => 'line[' . (int) $item['id'] . '][group_name]',
+									'id'    => 'line-group-' . (int) $item['id'],
+									'label' => '',
+								);
+								include __DIR__ . '/../partials/group-select.php';
+								?>
 							</td>
 						</tr>
 					<?php endforeach; ?>

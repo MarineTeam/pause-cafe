@@ -7,7 +7,13 @@ use PauseCafe\Schedule;
 
 <p class="muted">
 	For <?= e( Schedule::formatDate( $order['service_date'], 'l j F Y' ) ) ?> ·
-	<?= e( ucfirst( $order['status'] ) ) ?>
+	<?= e( ucfirst( $order['status'] ) ) ?> ·
+	<?= e( \PauseCafe\Payments::label( (string) $order['payment_method'] ) ) ?>
+	<?php if ( \PauseCafe\Orders::isPaid( $order ) ) : ?>
+		<span class="pill pill--open">Paid</span>
+	<?php else : ?>
+		<span class="pill pill--closed">To pay on the day</span>
+	<?php endif; ?>
 	<?php if ( $order['placed_by_name'] ) : ?>
 		· placed by <?= e( $order['placed_by_name'] ) ?> on behalf of <?= e( $order['user_name'] ) ?>
 	<?php endif; ?>

@@ -7,7 +7,6 @@ use PauseCafe\Schedule;
 $lines    = $cart['lines'];
 $total    = $cart['total'];
 $problems = $cart['problems'];
-$short    = $balance < $total;
 ?>
 
 <h1>Your cart</h1>
@@ -53,8 +52,16 @@ $short    = $balance < $total;
 
 								<input type="text" name="person_name" value="<?= e( $line['person_name'] ) ?>"
 									aria-label="Name on this meal" required>
-								<input type="text" name="group_name" value="<?= e( $line['group_name'] ) ?>"
-									aria-label="Group" placeholder="Group">
+
+								<?php
+								$gs = array(
+									'id'    => 'cart-group-' . (int) $line['index'],
+									'value' => $line['group_name'],
+									'label' => '',
+								);
+								include __DIR__ . '/partials/group-select.php';
+								?>
+
 								<input type="number" name="qty" value="<?= (int) $line['qty'] ?>" min="1"
 									aria-label="Quantity" style="max-width:90px">
 
@@ -75,31 +82,81 @@ $short    = $balance < $total;
 		</table>
 	</div>
 
+	<?php
+	// Each method decides for itself whether it can cover this order, so the
+	// cart does not need to know what any of them are.
+	$options   = array();
+	$firstFree = '';
+
+	foreach ( $methods as $methodId => $method ) {
+		$reason = $method->unavailableReason( Auth::id(), $total );
+
+		$options[ $methodId ] = array(
+			'method' => $method,
+			'reason' => $reason,
+		);
+
+		if ( '' === $reason && '' === $firstFree ) {
+			$firstFree = $methodId;
+		}
+	}
+
+	$walletShown = isset( $methods['wallet'] );
+	?>
+
 	<div class="panel">
 		<table>
 			<tr>
 				<th>Total</th>
 				<td class="num"><strong><?= e( Money::format( $total ) ) ?></strong></td>
 			</tr>
-			<tr>
-				<th>Your balance</th>
-				<td class="num <?= $short ? 'muted' : '' ?>"><?= e( Money::format( $balance ) ) ?></td>
-			</tr>
-			<tr>
-				<th>After this order</th>
-				<td class="num"><?= e( Money::format( $balance - $total ) ) ?></td>
-			</tr>
+			<?php if ( $walletShown ) : ?>
+				<tr>
+					<th>Your balance</th>
+					<td class="num <?= $balance < $total ? 'muted' : '' ?>"><?= e( Money::format( $balance ) ) ?></td>
+				</tr>
+			<?php endif; ?>
 		</table>
-
-		<?php if ( $short ) : ?>
-			<div class="flash flash--notice">
-				Your balance does not cover this order. Top up first, or ask an organiser.
-			</div>
-		<?php endif; ?>
 
 		<form method="post" action="/checkout">
 			<?= Csrf::field() ?>
-			<button type="submit" <?= ( $problems || $short || ! Auth::canOrder() ) ? 'disabled' : '' ?>>
+
+			<?php if ( ! $options ) : ?>
+				<div class="flash flash--error">
+					No payment method is switched on. Please tell an organiser.
+				</div>
+			<?php elseif ( 1 === count( $options ) ) : ?>
+				<?php
+				$onlyId  = array_key_first( $options );
+				$only    = $options[ $onlyId ];
+				?>
+				<input type="hidden" name="payment_method" value="<?= e( $onlyId ) ?>">
+				<p class="muted">
+					Paying by <strong><?= e( $only['method']->label() ) ?></strong>.
+					<?= e( $only['method']->description() ) ?>
+				</p>
+				<?php if ( '' !== $only['reason'] ) : ?>
+					<div class="flash flash--notice"><?= e( $only['reason'] ) ?></div>
+				<?php endif; ?>
+			<?php else : ?>
+				<h3>How would you like to pay?</h3>
+
+				<?php foreach ( $options as $methodId => $option ) : ?>
+					<div class="field">
+						<label>
+							<input type="radio" name="payment_method" value="<?= e( $methodId ) ?>"
+								<?= $methodId === $firstFree ? 'checked' : '' ?>
+								<?= '' !== $option['reason'] ? 'disabled' : '' ?>>
+							<?= e( $option['method']->label() ) ?>
+						</label>
+						<p class="help" style="margin-left:24px">
+							<?= e( '' !== $option['reason'] ? $option['reason'] : $option['method']->description() ) ?>
+						</p>
+					</div>
+				<?php endforeach; ?>
+			<?php endif; ?>
+
+			<button type="submit" <?= ( $problems || '' === $firstFree || ! Auth::canOrder() ) ? 'disabled' : '' ?>>
 				Place order
 			</button>
 		</form>

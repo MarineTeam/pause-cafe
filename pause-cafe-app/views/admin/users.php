@@ -80,8 +80,13 @@ include __DIR__ . '/_tabs.php';
 											<input type="text" name="name" value="<?= e( $row['name'] ) ?>">
 										</div>
 										<div>
-											<label>Group</label>
-											<input type="text" name="group_name" value="<?= e( $row['group_name'] ) ?>">
+											<?php
+											$gs = array(
+												'id'    => 'group-user-' . (int) $row['id'],
+												'value' => $row['group_name'],
+											);
+											include __DIR__ . '/../partials/group-select.php';
+											?>
 										</div>
 										<div>
 											<label>Role</label>
@@ -134,8 +139,10 @@ include __DIR__ . '/_tabs.php';
 				<input type="text" id="new-name" name="name" required>
 			</div>
 			<div>
-				<label for="new-group">Group</label>
-				<input type="text" id="new-group" name="group_name">
+				<?php
+				$gs = array( 'id' => 'new-group' );
+				include __DIR__ . '/../partials/group-select.php';
+				?>
 			</div>
 			<div>
 				<label for="new-email">Email</label>

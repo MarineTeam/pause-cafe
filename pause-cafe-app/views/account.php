@@ -10,14 +10,25 @@ $user = Auth::user();
 
 <h1>Your account</h1>
 
-<div class="panel">
-	<p class="stat__label">Wallet balance</p>
-	<p class="balance <?= $balance <= 0 ? 'balance--low' : '' ?>"><?= e( Money::format( $balance ) ) ?></p>
-	<p class="muted">
-		Top up through the church's Zeffy page, or hand cash to an organiser and they
-		will add it here.
-	</p>
-</div>
+<?php
+/*
+ * The wallet is optional. With it switched off the balance is hidden -- unless
+ * this account still holds money, which needs to stay visible until it is
+ * settled rather than quietly disappearing.
+ */
+$showWallet = \PauseCafe\Payments::isEnabled( 'wallet' ) || $entries;
+?>
+
+<?php if ( $showWallet ) : ?>
+	<div class="panel">
+		<p class="stat__label">Wallet balance</p>
+		<p class="balance <?= $balance <= 0 ? 'balance--low' : '' ?>"><?= e( Money::format( $balance ) ) ?></p>
+		<p class="muted">
+			Top up through the church's Zeffy page, or hand cash to an organiser and they
+			will add it here.
+		</p>
+	</div>
+<?php endif; ?>
 
 <h2>Orders</h2>
 
@@ -43,6 +54,9 @@ $user = Auth::user();
 							<span class="pill pill--<?= 'confirmed' === $order['status'] ? 'open' : 'past' ?>">
 								<?= e( ucfirst( $order['status'] ) ) ?>
 							</span>
+							<?php if ( 'confirmed' === $order['status'] && ! \PauseCafe\Orders::isPaid( $order ) ) : ?>
+								<span class="pill pill--closed">To pay</span>
+							<?php endif; ?>
 						</td>
 						<td class="num"><?= e( Money::format( (int) $order['total_cents'] ) ) ?></td>
 					</tr>
@@ -51,6 +65,8 @@ $user = Auth::user();
 		</table>
 	</div>
 <?php endif; ?>
+
+<?php if ( $showWallet ) : ?>
 
 <h2>Wallet history</h2>
 
@@ -84,6 +100,8 @@ $user = Auth::user();
 			</tbody>
 		</table>
 	</div>
+<?php endif; ?>
+
 <?php endif; ?>
 
 <h2>Change password</h2>

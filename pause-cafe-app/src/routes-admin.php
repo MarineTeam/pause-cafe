@@ -11,9 +11,11 @@ declare(strict_types=1);
 use PauseCafe\Auth;
 use PauseCafe\Blackouts;
 use PauseCafe\Csrf;
+use PauseCafe\Groups;
 use PauseCafe\Menu;
 use PauseCafe\Money;
 use PauseCafe\Orders;
+use PauseCafe\Payments;
 use PauseCafe\Schedule;
 use PauseCafe\Settings;
 use PauseCafe\Users;
@@ -73,7 +75,7 @@ $router->post(
 				$post( 'email' ),
 				(string) ( $_POST['password'] ?? '' ),
 				$post( 'name' ),
-				$post( 'group_name' ),
+				Groups::sanitise( $post( 'group_name' ) ),
 				'admin' === $post( 'role' ) ? Users::ROLE_ADMIN : Users::ROLE_MEMBER,
 				true
 			);
@@ -115,7 +117,7 @@ $router->post(
 			$userId,
 			array(
 				'name'        => $post( 'name' ),
-				'group_name'  => $post( 'group_name' ),
+				'group_name'  => Groups::sanitise( $post( 'group_name' ) ),
 				'role'        => $role,
 				'is_approved' => isset( $_POST['is_approved'] ) ? 1 : 0,
 			)
@@ -393,6 +395,7 @@ $router->get(
 				'dates'       => Menu::serviceDates(),
 				'serviceDate' => $serviceDate,
 				'items'       => $serviceDate ? Menu::itemsForServiceDate( $serviceDate ) : array(),
+				'methods'     => Payments::enabled(),
 			)
 		);
 	}
@@ -420,7 +423,7 @@ $router->post(
 				'item_id'     => (int) $itemId,
 				'qty'         => $qty,
 				'person_name' => trim( (string) ( $row['person_name'] ?? '' ) ),
-				'group_name'  => trim( (string) ( $row['group_name'] ?? '' ) ),
+				'group_name'  => Groups::sanitise( (string) ( $row['group_name'] ?? '' ) ),
 			);
 		}
 
@@ -431,8 +434,15 @@ $router->post(
 
 		try {
 			// force: organisers take orders after the cutoff, and sometimes for
-			// someone whose balance is short. The debit is still recorded.
-			$orderId = Orders::place( $userId, $lines, Auth::id(), $post( 'note' ), true );
+			// someone whose balance is short. What is owed is still recorded.
+			$orderId = Orders::place(
+				$userId,
+				$lines,
+				Auth::id(),
+				$post( 'note' ),
+				true,
+				$post( 'payment_method' )
+			);
 
 			View::flash( 'success', 'Order #' . $orderId . ' placed on their behalf.' );
 			View::redirect( '/orders/' . $orderId );
@@ -444,14 +454,50 @@ $router->post(
 );
 
 $router->post(
+	'/admin/orders/{id}/paid',
+	static function ( string $id ) use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$order = Orders::find( (int) $id );
+
+		if ( ! $order ) {
+			View::redirect( '/admin/orders' );
+		}
+
+		$paid = 'unpaid' !== $post( 'state' );
+
+		Orders::markPaid( (int) $id, $paid );
+
+		View::flash(
+			'success',
+			'Order #' . (int) $id . ( $paid ? ' marked paid.' : ' marked unpaid again.' )
+		);
+
+		View::redirect( '/admin/orders?date=' . urlencode( (string) $order['service_date'] ) );
+	}
+);
+
+$router->post(
 	'/admin/orders/{id}/cancel',
 	static function ( string $id ) use ( $requireAdmin ): void {
 		$requireAdmin();
 		Csrf::verify();
 
+		$order = Orders::find( (int) $id );
+		$paid  = $order && Orders::isPaid( $order );
+		$byCod = $order && 'cod' === $order['payment_method'];
+
 		try {
 			Orders::cancel( (int) $id, Auth::id() );
-			View::flash( 'success', 'Order cancelled and refunded to their wallet.' );
+
+			// Cash already collected is not something the system can hand back.
+			View::flash(
+				'success',
+				$byCod && $paid
+					? 'Order cancelled. It was paid in cash, so return the money in person.'
+					: 'Order cancelled and anything paid has been put back.'
+			);
 		} catch ( \RuntimeException $e ) {
 			View::flash( 'error', $e->getMessage() );
 		}
@@ -539,6 +585,9 @@ $router->get(
 				'title'     => 'Settings',
 				'settings'  => Settings::all(),
 				'locations' => Menu::locations(),
+				'methods'   => Payments::all(),
+				'groups'    => Groups::all(),
+				'orphaned'  => Groups::orphaned(),
 				'blackouts' => Blackouts::all(),
 				'zeffyOn'   => Zeffy::isConfigured(),
 			)
@@ -572,6 +621,30 @@ $router->post(
 				'menu_note'                => $post( 'menu_note' ),
 			)
 		);
+
+		/*
+		 * Payment toggles come from the register rather than a fixed list, so a
+		 * method added later gets its switch here without this code changing.
+		 */
+		$wanted = (array) ( $_POST['payment'] ?? array() );
+		$keep   = array();
+
+		foreach ( Payments::all() as $id => $method ) {
+			if ( isset( $wanted[ $id ] ) ) {
+				$keep[] = $id;
+			}
+		}
+
+		// Turning everything off would leave nobody able to order, and no way to
+		// undo it from the storefront. Refuse rather than strand the site.
+		if ( ! $keep ) {
+			View::flash( 'error', 'At least one payment method has to stay switched on. Settings saved, payment methods unchanged.' );
+			View::redirect( '/admin/settings' );
+		}
+
+		foreach ( Payments::all() as $id => $method ) {
+			Settings::set( Payments::settingKey( $id ), in_array( $id, $keep, true ) ? 'yes' : 'no' );
+		}
 
 		View::flash( 'success', 'Settings saved.' );
 		View::redirect( '/admin/settings' );
@@ -622,6 +695,63 @@ $router->post(
 		Menu::deleteLocation( (int) $id );
 
 		View::flash( 'success', 'Location removed, along with its dishes.' );
+		View::redirect( '/admin/settings' );
+	}
+);
+
+$router->post(
+	'/admin/groups/add',
+	static function () use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$name = $post( 'name' );
+
+		if ( '' === $name ) {
+			View::flash( 'error', 'Give the group a name.' );
+		} elseif ( 0 === Groups::add( $name ) ) {
+			View::flash( 'error', 'There is already a group called ' . $name . '.' );
+		} else {
+			View::flash( 'success', $name . ' added.' );
+		}
+
+		View::redirect( '/admin/settings' );
+	}
+);
+
+$router->post(
+	'/admin/groups/{id}/rename',
+	static function ( string $id ) use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		if ( Groups::rename( (int) $id, $post( 'name' ) ) ) {
+			View::flash( 'success', 'Group renamed, and everyone in it moved across.' );
+		} else {
+			View::flash( 'error', 'That name is blank or already taken.' );
+		}
+
+		View::redirect( '/admin/settings' );
+	}
+);
+
+$router->post(
+	'/admin/groups/{id}/delete',
+	static function ( string $id ) use ( $requireAdmin ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$group = Groups::find( (int) $id );
+
+		if ( $group ) {
+			Groups::delete( (int) $id );
+
+			View::flash(
+				'success',
+				$group['name'] . ' removed from the list. Anyone already in it keeps it until you change them.'
+			);
+		}
+
 		View::redirect( '/admin/settings' );
 	}
 );
