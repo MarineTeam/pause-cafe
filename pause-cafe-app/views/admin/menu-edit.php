@@ -143,6 +143,17 @@ $toInput = static function ( string $stored ): string {
 		</details>
 	<?php endif; ?>
 
+	<div class="panel">
+		<?php
+		$fr = array(
+			'rules' => \PauseCafe\MenuFields::decodeRules( (string) $value( 'field_rules' ) ),
+			'note'  => 'Overrides this dish only. Inherit follows its schedule, which follows the site default.',
+		);
+
+		include __DIR__ . '/../partials/field-rules.php';
+		?>
+	</div>
+
 	<?php if ( $affected > 0 ) : ?>
 		<div class="panel">
 			<h3>People who have already ordered this</h3>

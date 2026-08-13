@@ -27,6 +27,7 @@ in `public/index.php` and `routes-admin.php`; rendering lives in `views/`.
 | `Menu.php` | Dishes and pickup locations. Every read comes back with its `Window` attached. |
 | `MenuBuilder.php` | The grid way of entering a menu. Alongside the per-dish editor, not instead of it. |
 | `MenuChanges.php` | Who to tell when a dish they already ordered is corrected, and what to update. |
+| `MenuFields.php` | The questions asked when ordering, and the three-level visibility resolution. |
 | `Cart.php` | The session cart. Lines are a list, not keyed by dish — the same dish for two people is two lines. |
 | `Orders.php` | Placing, cancelling and reporting. Owns the transaction that ties an order to its wallet debit. |
 | `Wallet.php` | The append-only ledger. |

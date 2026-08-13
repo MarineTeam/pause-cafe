@@ -5,6 +5,7 @@ $tabs = array(
 	'/admin'          => 'Overview',
 	'/admin/menu'     => 'Menu',
 	'/admin/schedules' => 'Schedules',
+	'/admin/fields'   => 'Fields',
 	'/admin/orders'   => 'Orders',
 	'/kitchen'        => 'Kitchen list',
 	'/admin/users'    => 'People',

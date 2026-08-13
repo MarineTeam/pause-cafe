@@ -44,11 +44,27 @@ class View {
 
 		extract( $data, EXTR_SKIP );
 
+		$depth = ob_get_level();
+
 		ob_start();
 
-		include $file;
+		try {
+			include $file;
 
-		return (string) ob_get_clean();
+			return (string) ob_get_clean();
+		} catch ( \Throwable $e ) {
+			/*
+			 * Without this, a template that throws leaves its buffer open. The
+			 * half-rendered page is then flushed at shutdown alongside the error
+			 * page, which reads as a mangled success rather than a failure -- and
+			 * that is a great deal harder to diagnose than a clean 500.
+			 */
+			while ( ob_get_level() > $depth ) {
+				ob_end_clean();
+			}
+
+			throw $e;
+		}
 	}
 
 	public static function flash( string $type, string $message ): void {

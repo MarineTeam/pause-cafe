@@ -25,21 +25,42 @@ class Cart {
 		$_SESSION[ self::KEY ] = array_values( $lines );
 	}
 
-	public static function add( int $itemId, int $qty, string $personName, string $groupName, string $note = '' ): void {
-		$lines = self::lines();
+	/**
+	 * Splits answers into the three that have their own columns and the rest.
+	 *
+	 * @param array<string,string> $values Already sanitised, keyed by field.
+	 */
+	private static function shape( int $itemId, int $qty, array $values ): array {
+		$extra = $values;
 
-		$lines[] = array(
+		foreach ( MenuFields::BUILTINS as $key ) {
+			unset( $extra[ $key ] );
+		}
+
+		return array(
 			'item_id'     => $itemId,
 			'qty'         => max( 1, $qty ),
-			'person_name' => trim( $personName ),
-			'group_name'  => trim( $groupName ),
-			'note'        => self::trimNote( $note ),
+			'person_name' => (string) ( $values[ MenuFields::PERSON ] ?? '' ),
+			'group_name'  => (string) ( $values[ MenuFields::GROUP ] ?? '' ),
+			'note'        => (string) ( $values[ MenuFields::NOTE ] ?? '' ),
+			'extra'       => array_filter( $extra, static fn( $v ) => '' !== $v ),
 		);
+	}
+
+	/**
+	 * @param array<string,string> $values Keyed by field key.
+	 */
+	public static function add( int $itemId, int $qty, array $values ): void {
+		$lines   = self::lines();
+		$lines[] = self::shape( $itemId, $qty, $values );
 
 		self::store( $lines );
 	}
 
-	public static function update( int $index, int $qty, string $personName, string $groupName, string $note = '' ): void {
+	/**
+	 * @param array<string,string> $values Keyed by field key.
+	 */
+	public static function update( int $index, int $qty, array $values ): void {
 		$lines = self::lines();
 
 		if ( ! isset( $lines[ $index ] ) ) {
@@ -53,20 +74,9 @@ class Cart {
 			return;
 		}
 
-		$lines[ $index ]['qty']         = $qty;
-		$lines[ $index ]['person_name'] = trim( $personName );
-		$lines[ $index ]['group_name']  = trim( $groupName );
-		$lines[ $index ]['note']        = self::trimNote( $note );
+		$lines[ $index ] = self::shape( (int) $lines[ $index ]['item_id'], $qty, $values );
 
 		self::store( $lines );
-	}
-
-	/**
-	 * Notes end up on a printed kitchen sheet, so they are capped at something
-	 * that still fits in a table cell.
-	 */
-	private static function trimNote( string $note ): string {
-		return mb_substr( trim( $note ), 0, 200 );
 	}
 
 	public static function remove( int $index ): void {
@@ -133,6 +143,7 @@ class Cart {
 				'person_name' => (string) $line['person_name'],
 				'group_name'  => (string) $line['group_name'],
 				'note'        => (string) ( $line['note'] ?? '' ),
+				'extra'       => (array) ( $line['extra'] ?? array() ),
 				'subtotal'    => $subtotal,
 			);
 		}

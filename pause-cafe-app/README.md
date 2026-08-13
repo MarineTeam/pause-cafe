@@ -215,6 +215,34 @@ Adding another: implement `PauseCafe\Mail\Transport` and call
 `Mailer::register()`. It declares its own configuration fields, so the settings
 screen renders a form for it without changing.
 
+## The questions asked when ordering
+
+Managed under **Fields**, like a WooCommerce add-ons plugin. Each field has a
+label, a type — single line, longer text, a list of choices, yes/no, or the
+managed group list — and whether it is asked and required.
+
+Visibility resolves in **three levels, each overriding the last**:
+
+1. the field's own setting — the site default
+2. the schedule the dish belongs to
+3. the dish itself
+
+A level that says nothing inherits. Each override is one four-way control:
+inherit, do not ask, ask optional, ask required.
+
+**Name, group and note cannot be deleted.** The kitchen list, the CSV export and
+the order emails read them by name, so removing one would break those. Set them
+to "do not ask" instead — that hides them without breaking anything, at whatever
+level you like.
+
+Answers to fields you add travel with the order and show on the kitchen list,
+the CSV, the order page and the confirmation email. They are frozen on the line,
+so deleting a field later does not erase what people already told you.
+
+Only visible fields are read from a submitted form, and a list field only
+accepts a value it offered — hand-posting a hidden field cannot put anything on
+the cook list.
+
 ## Correcting a dish after people have ordered
 
 Dishes get fixed — a typo, the wrong name, a price. By then somebody has usually

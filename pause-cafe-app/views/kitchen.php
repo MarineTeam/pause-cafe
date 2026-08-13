@@ -166,9 +166,17 @@ $heading = static function ( string $key, string $label ) use ( $sort, $dir, $qu
 							<?php endif; ?>
 						</td>
 						<td>
+							<?php $extras = \PauseCafe\MenuFields::describeExtras( $line['extra_fields'] ?? '' ); ?>
+
 							<?= e( $line['note'] ) ?>
-							<?php if ( '' !== $line['order_note'] ) : ?>
+
+							<?php if ( '' !== $extras ) : ?>
 								<?php if ( '' !== $line['note'] ) : ?><br><?php endif; ?>
+								<?= e( $extras ) ?>
+							<?php endif; ?>
+
+							<?php if ( '' !== $line['order_note'] ) : ?>
+								<?php if ( '' !== $line['note'] || '' !== $extras ) : ?><br><?php endif; ?>
 								<span class="muted" style="font-size:13px"><?= e( $line['order_note'] ) ?></span>
 							<?php endif; ?>
 						</td>

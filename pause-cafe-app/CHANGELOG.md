@@ -8,6 +8,43 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.9.0 — 2026-08-12
+
+### Added
+
+- **The questions asked when ordering are now configurable**, the way a
+  WooCommerce add-ons plugin does it. Organisers manage them under **Fields**.
+- **Three levels, each overriding the last** — the site default, then the
+  schedule, then the individual dish. A level that says nothing inherits.
+- **New field types**: single line, longer text, a list of choices, yes/no, and
+  the managed group list.
+- Answers to added fields travel with the order and appear on the kitchen list,
+  the CSV export, the order page and the confirmation email.
+
+### Notes
+
+- **Name, group and note cannot be deleted.** The kitchen list, the CSV and the
+  order emails read them by name, so removing one would break those. They can be
+  set to "do not ask" at any level, which hides them without breaking anything,
+  and the Fields screen offers no remove control for them at all.
+- Each override is one four-way control — inherit, do not ask, ask optional, ask
+  required — because the fourth combination, hidden but required, is not
+  something anyone means.
+- **Only visible fields are read from a form.** Hand-posting a hidden field
+  cannot smuggle a value onto the cook list, and a list field only accepts what
+  it offered.
+- Answers are stored as JSON on the order line, frozen like the rest of it.
+  Deleting a field later does not erase what people already told you.
+- A required field with nothing to prefill stays visible on the dish card;
+  everything else folds away, so ordering for yourself is still one click.
+
+### Fixed
+
+- **A template that threw left its output buffer open**, so the half-rendered
+  page was flushed at shutdown alongside the error page. That reads as a mangled
+  success rather than a failure, and is much harder to diagnose than a clean
+  500. Found while building this — a view was missing an import.
+
 ## 0.8.1 — 2026-08-12
 
 ### Added

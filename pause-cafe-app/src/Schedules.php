@@ -38,6 +38,7 @@ class Schedules {
 			'service_days_after_close' => Settings::int( 'service_days_after_close', 1 ),
 			'preview_upcoming'         => Settings::bool( 'preview_upcoming' ),
 			'show_on_front'            => 'no' !== Settings::get( 'default_show_on_front', 'yes' ),
+			'field_rules'              => Settings::get( 'default_field_rules' ),
 			'sort_order'               => -1,
 		);
 	}
@@ -58,6 +59,7 @@ class Schedules {
 			'service_days_after_close' => (int) $row['service_days_after_close'],
 			'preview_upcoming'         => 'yes' === $row['preview_upcoming'],
 			'show_on_front'            => 'yes' === $row['show_on_front'],
+			'field_rules'              => (string) ( $row['field_rules'] ?? '' ),
 			'sort_order'               => (int) $row['sort_order'],
 		);
 	}
@@ -190,6 +192,7 @@ class Schedules {
 			'service_days_after_close' => max( 0, min( 14, (int) ( $data['service_days_after_close'] ?? 1 ) ) ),
 			'preview_upcoming'         => ! empty( $data['preview_upcoming'] ) ? 'yes' : 'no',
 			'show_on_front'            => ! empty( $data['show_on_front'] ) ? 'yes' : 'no',
+			'field_rules'              => (string) ( $data['field_rules'] ?? '' ),
 			'sort_order'               => (int) ( $data['sort_order'] ?? 0 ),
 		);
 

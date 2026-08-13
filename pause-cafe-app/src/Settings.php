@@ -41,6 +41,7 @@ class Settings {
 			// these are the rules for the one every install starts with.
 			'default_schedule_name'    => 'Sunday lunch',
 			'default_show_on_front'    => 'yes',
+			'default_field_rules'      => '',
 
 			// Email. Transport-specific keys (smtp_*, resend_*) are not listed:
 			// each transport reads its own with a sensible fallback, so adding one
