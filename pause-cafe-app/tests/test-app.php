@@ -26,6 +26,7 @@ use PauseCafe\Mailer;
 use PauseCafe\Menu;
 use PauseCafe\MenuBuilder;
 use PauseCafe\MenuChanges;
+use PauseCafe\MenuFields;
 use PauseCafe\Money;
 use PauseCafe\Notifications;
 use PauseCafe\Orders;
@@ -1349,5 +1350,203 @@ check( 'and forgetting turns it back on', MenuChanges::willNotify(), true );
 // The opt-out is per save, so the next one speaks up again unless told not to.
 Menu::save( array_merge( Menu::item( $correctedId ), array( 'name' => 'Chicken dhansak' ) ), $correctedId );
 check( 'so the next correction notifies again', MenuChanges::totalNotified(), 2 );
+
+/* ------------------------------------------------------------------ */
+
+echo "\nThe three built-in fields cannot be removed\n";
+
+check( 'they are seeded', array_keys( MenuFields::definitions() ), array( 'person_name', 'group_name', 'note' ) );
+check( 'and marked built in', MenuFields::definitions()['person_name']['builtin'], true );
+
+$personId = MenuFields::definitions()['person_name']['id'];
+
+check( 'deleting one is refused', MenuFields::delete( $personId ), false );
+check( 'and it survives', isset( MenuFields::definitions()['person_name'] ), true );
+
+// Hiding is the supported way to get them off the form.
+MenuFields::save( array( 'label' => 'Name on this meal', 'is_shown' => false ), $personId );
+
+check( 'but it can be hidden', MenuFields::definitions()['person_name']['shown'], false );
+check( 'without disappearing', isset( MenuFields::definitions()['person_name'] ), true );
+
+MenuFields::save( array( 'label' => 'Name on this meal', 'is_shown' => true, 'is_required' => true ), $personId );
+
+check( 'a built-in keeps its type when saved', MenuFields::definitions()['person_name']['type'], 'text' );
+check( 'and a new field cannot shadow one', MenuFields::makeKey( 'Note' ), 'note_custom' );
+
+echo "\nOrganisers can add their own\n";
+
+// field_key is posted as an empty string by the form rather than omitted, so
+// the blank case has to derive from the label too -- ?? alone does not.
+$allergyId = MenuFields::save(
+	array(
+		'field_key'   => '',
+		'label'       => 'Allergies',
+		'type'        => 'text',
+		'placeholder' => 'e.g. nuts',
+		'is_shown'    => true,
+	)
+);
+
+check( 'the key comes from the label', isset( MenuFields::definitions()['allergies'] ), true );
+check( 'and it is not built in', MenuFields::definitions()['allergies']['builtin'], false );
+
+check_throws(
+	'a clashing label is refused',
+	static fn() => MenuFields::save( array( 'label' => 'Allergies', 'type' => 'text' ) ),
+	'already a field'
+);
+
+$spiceId = MenuFields::save(
+	array(
+		'label'    => 'Spice level',
+		'type'     => 'select',
+		'options'  => "Mild\nMedium\nHot",
+		'is_shown' => true,
+	)
+);
+
+check( 'a list field keeps its choices', MenuFields::definitions()['spice_level']['options'], array( 'Mild', 'Medium', 'Hot' ) );
+
+echo "\nAnswers are cleaned by the field's own type\n";
+
+$spice = MenuFields::definitions()['spice_level'];
+
+check( 'a listed choice passes', MenuFields::sanitiseValue( $spice, 'Medium' ), 'Medium' );
+check( 'case is forgiven', MenuFields::sanitiseValue( $spice, 'medium' ), 'Medium' );
+
+// A select is a convenience on the form, not a promise about what arrives.
+check( 'an invented choice is dropped', MenuFields::sanitiseValue( $spice, 'Nuclear' ), '' );
+
+$groupField = MenuFields::definitions()['group_name'];
+
+check( 'a group is checked against the managed list', MenuFields::sanitiseValue( $groupField, 'Made up' ), '' );
+check( 'and a real one passes', MenuFields::sanitiseValue( $groupField, 'Seniors' ), 'Seniors' );
+
+echo "\nVisibility resolves site, then schedule, then dish\n";
+
+$fieldSchedule = Schedules::save(
+	array(
+		'name'        => 'Field test schedule',
+		'mode'        => Schedule::MODE_PLANNED,
+		'field_rules' => MenuFields::encodeRules( array( 'allergies' => array( 'shown' => false ) ) ),
+	)
+);
+
+$plainDish = Menu::save(
+	array(
+		'location_id'  => $marine,
+		'name'         => 'Field test dish',
+		'price_cents'  => 1000,
+		'service_date' => $changeDate,
+		'status'       => 'published',
+	)
+);
+
+check( 'the site default shows it', isset( MenuFields::visibleFor( Menu::item( $plainDish ) )['allergies'] ), true );
+
+$onSchedule = Menu::save(
+	array(
+		'location_id'  => $rcc,
+		'name'         => 'Schedule test dish',
+		'price_cents'  => 1000,
+		'service_date' => $changeDate,
+		'status'       => 'published',
+		'schedule_id'  => $fieldSchedule,
+	)
+);
+
+check( 'the schedule can hide it', isset( MenuFields::visibleFor( Menu::item( $onSchedule ) )['allergies'] ), false );
+
+Menu::save(
+	array_merge(
+		Menu::item( $onSchedule ),
+		array( 'field_rules' => MenuFields::encodeRules( array( 'allergies' => array( 'shown' => true, 'required' => true ) ) ) )
+	),
+	$onSchedule
+);
+
+$resolved = MenuFields::visibleFor( Menu::item( $onSchedule ) );
+
+check( 'and the dish can bring it back', isset( $resolved['allergies'] ), true );
+check( 'as required', $resolved['allergies']['required'], true );
+check( 'while its schedule sibling stays hidden', isset( MenuFields::visibleFor( Menu::item( $plainDish ) )['spice_level'] ), true );
+
+echo "\nOnly visible fields are read from a form\n";
+
+$hiddenOnDish = Menu::save(
+	array(
+		'location_id'  => $marine,
+		'name'         => 'No spice here',
+		'price_cents'  => 1000,
+		'service_date' => $changeDate,
+		'status'       => 'published',
+		'field_rules'  => MenuFields::encodeRules( array( 'spice_level' => array( 'shown' => false ) ) ),
+	)
+);
+
+$posted = array(
+	'person_name' => 'Wanda',
+	'spice_level' => 'Hot',
+	'allergies'   => 'Peanuts',
+);
+
+$collected = MenuFields::collect( Menu::item( $hiddenOnDish ), $posted );
+
+check( 'a visible field is taken', $collected['allergies'], 'Peanuts' );
+// Hand-posting a hidden field must not smuggle a value into the kitchen list.
+check( 'a hidden one is ignored entirely', isset( $collected['spice_level'] ), false );
+
+check(
+	'a blank required field is reported',
+	MenuFields::missingRequired( Menu::item( $onSchedule ), array( 'person_name' => 'X' ) ),
+	array( 'Allergies' )
+);
+
+check(
+	'name falls back to the account',
+	MenuFields::collect( Menu::item( $plainDish ), array(), array( 'name' => 'Fallback Person', 'group_name' => '' ) )['person_name'],
+	'Fallback Person'
+);
+
+echo "\nAnswers travel with the order and reach the kitchen\n";
+
+$fieldEater = Users::create( 'fields@example.org', 'a-good-password', 'Fay Fields', '', Users::ROLE_MEMBER, true );
+Wallet::credit( $fieldEater, 5000, Wallet::KIND_TOPUP, 'float' );
+
+$fieldOrder = Orders::place(
+	$fieldEater,
+	array(
+		array(
+			'item_id'     => $plainDish,
+			'qty'         => 1,
+			'person_name' => 'Fay',
+			'extra'       => array( 'allergies' => 'Peanuts', 'spice_level' => 'Mild' ),
+		),
+	)
+);
+
+$storedLine = Orders::lines( $fieldOrder )[0];
+
+check( 'the answers are stored', MenuFields::describeExtras( $storedLine['extra_fields'] ), 'Allergies: Peanuts · Spice level: Mild' );
+
+$kitchenRows = array_values(
+	array_filter(
+		Orders::lineItemsFiltered( array( 'from' => $changeDate, 'to' => $changeDate ) ),
+		static fn( $r ) => 'Field test dish' === $r['item_name']
+	)
+);
+
+check( 'and reach the kitchen table', MenuFields::describeExtras( $kitchenRows[0]['extra_fields'] ), 'Allergies: Peanuts · Spice level: Mild' );
+
+// A deleted field must not take its answers with it.
+MenuFields::delete( $spiceId );
+
+check( 'removing a field is allowed', isset( MenuFields::definitions()['spice_level'] ), false );
+check(
+	'and past answers still read, by key',
+	false !== strpos( MenuFields::describeExtras( $storedLine['extra_fields'] ), 'Spice level: Mild' ),
+	true
+);
 
 finish();

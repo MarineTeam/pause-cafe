@@ -75,6 +75,9 @@ tab from the request path.
 | `menu.php` `menu-edit.php` | Dish list and per-dish editor. The editor renders different fields per active mode. |
 | `menu-builder.php` | The grid: dates down, locations across. Three renderings, picked by mode. |
 | `schedules.php` | Named schedules and their rules. The default points at Settings. |
+| `fields.php` | The order-field registry. Built-ins show no remove control. |
+| `partials/order-fields.php` | Renders the configured questions on a dish or a cart line. |
+| `partials/field-rules.php` | The per-level override control, used on schedules and dishes. |
 | `orders.php` `order-new.php` | Orders for a date; placing one on someone's behalf |
 | `report.php` | The kitchen report, with print styling |
 | `users.php` | People, approval, wallet credit/debit, password reset |

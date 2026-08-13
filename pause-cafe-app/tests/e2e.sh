@@ -158,6 +158,34 @@ has "the builder now offers a schedule picker" \
   "$(curl -s -b $A -c $A "$BASE/admin/menu/builder")" 'name="schedule"'
 
 echo ""
+echo "Order fields"
+FIELDS=$(curl -s -b $A -c $A "$BASE/admin/fields")
+has "the built-ins are listed" "$FIELDS" "Name on this meal"
+has "and marked as built in" "$FIELDS" "Built in"
+has "with their storage key shown" "$FIELDS" "<code>person_name</code>"
+has "and a form to add more" "$FIELDS" "Add a field"
+
+# A built-in offers no remove control at all, so it cannot be deleted by
+# clicking around.
+BUILTIN_REMOVES=$(echo "$FIELDS" | grep -c 'Remove field' || true)
+want "built-ins offer no remove button" "$BUILTIN_REMOVES" "0"
+
+T=$(tok $A /admin/fields)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/fields/save" \
+  -d "_token=$T" -d "label=Allergies" -d "type=text" -d "placeholder=e.g. nuts" -d "is_shown=1"
+
+FIELDS=$(curl -s -b $A -c $A "$BASE/admin/fields")
+has "saving reports success" "$FIELDS" "Field saved"
+has "a new field appears" "$FIELDS" "Allergies"
+has "keyed off its label" "$FIELDS" "<code>allergies</code>"
+has "and this one can be removed" "$FIELDS" "Remove field"
+
+has "the dish editor offers per-dish overrides" \
+  "$(curl -s -b $A -c $A "$BASE/admin/menu/builder")" "Build menu"
+has "the schedules screen offers per-schedule ones" \
+  "$(curl -s -b $A -c $A "$BASE/admin/schedules")" 'name="rule\[allergies\]"'
+
+echo ""
 echo "Front page grid"
 has "the dish grid carries the column count" "$(curl -s "$BASE/")" 'style="--cols: 3"'
 has "and settings can change it" "$(curl -s -b $A -c $A "$BASE/admin/settings")" 'name="front_grid_columns"'
@@ -185,7 +213,9 @@ curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/users/$MEMBER_ID" \
 MENU=$(curl -s -b $M -c $M "$BASE/")
 has "an approved member gets the order form" "$MENU" "Add to cart"
 has "the name field is prefilled" "$MENU" 'value="Sam Member"'
-has "the group is a dropdown" "$MENU" '<select id="group-'
+# Ids are prefixed per form now that fields are rendered from configuration, so
+# this matches the stable part: the id ends with the key, and the name is it.
+has "the group is a dropdown" "$(flat "$MENU")" '_name" name="group_name"'
 has "with their group preselected" "$MENU" '<option value="Youth" selected'
 has "and the other group offered" "$MENU" '<option value="Seniors"'
 hasnt "and no free-text group box anywhere" "$MENU" 'type="text" name="group_name"'
@@ -212,9 +242,11 @@ echo ""
 echo "Ordering"
 ITEM=$(curl -s -b $M -c $M "$BASE/" | grep -o 'name="item_id" value="[0-9]*"' | head -1 | grep -o '[0-9]\+')
 T=$(tok $M /)
+has "the custom field is on the order form" "$(curl -s -b $M -c $M "$BASE/")" 'name="allergies"'
+
 curl -s -o /dev/null -b $M -c $M -X POST "$BASE/cart/add" \
   -d "_token=$T" -d "item_id=$ITEM" -d "qty=2" -d "person_name=Sam" -d "group_name=Youth" \
-  -d "note=no onions"
+  -d "note=no onions" -d "allergies=Peanuts"
 
 CART=$(curl -s -b $M -c $M "$BASE/cart")
 has "the cart shows the dish" "$CART" "BBQ pork on rice"
@@ -304,6 +336,7 @@ has "with the line note" "$KITCHEN" "no onions"
 has "and the order note" "$KITCHEN" "Side door please"
 has "the name on the meal" "$KITCHEN" "Sam"
 has "the group" "$KITCHEN" "Youth"
+has "the custom field reaches the cook list" "$KITCHEN" "Allergies: Peanuts"
 has "a to-cook summary" "$KITCHEN" "To cook"
 has "and sortable headings" "$KITCHEN" 'href="/kitchen?range=all&amp;sort=dish'
 

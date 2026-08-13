@@ -228,6 +228,30 @@ class Database {
 			)'
 		);
 
+		/*
+		 * The fields asked for on each meal. Three are built in -- who it is for,
+		 * their group, and a note -- because the kitchen list and the CSV read
+		 * them by name. Those three can be hidden but never deleted.
+		 *
+		 * The row itself is the global setting. Schedules and dishes override it
+		 * through their own field_rules, so the resolution order is
+		 * definition -> schedule -> dish.
+		 */
+		$pdo->exec(
+			"CREATE TABLE IF NOT EXISTS custom_fields (
+				id          INTEGER PRIMARY KEY AUTOINCREMENT,
+				field_key   TEXT    NOT NULL UNIQUE,
+				label       TEXT    NOT NULL,
+				type        TEXT    NOT NULL DEFAULT 'text',
+				options     TEXT    NOT NULL DEFAULT '',
+				placeholder TEXT    NOT NULL DEFAULT '',
+				is_builtin  INTEGER NOT NULL DEFAULT 0,
+				is_shown    INTEGER NOT NULL DEFAULT 1,
+				is_required INTEGER NOT NULL DEFAULT 0,
+				sort_order  INTEGER NOT NULL DEFAULT 0
+			)"
+		);
+
 		$pdo->exec(
 			"CREATE TABLE IF NOT EXISTS blackouts (
 				service_date TEXT PRIMARY KEY,
@@ -256,6 +280,13 @@ class Database {
 
 		// NULL means the default schedule, whose rules are in settings.
 		self::addColumnIfMissing( 'menu_items', 'schedule_id', 'INTEGER NULL' );
+
+		// Per-field show/require overrides, as JSON. Empty means inherit.
+		self::addColumnIfMissing( 'schedules', 'field_rules', "TEXT NOT NULL DEFAULT ''" );
+		self::addColumnIfMissing( 'menu_items', 'field_rules', "TEXT NOT NULL DEFAULT ''" );
+
+		// Answers to any field beyond the three built-in ones, as JSON.
+		self::addColumnIfMissing( 'order_lines', 'extra_fields', "TEXT NOT NULL DEFAULT ''" );
 
 		self::seed();
 	}
@@ -292,6 +323,7 @@ class Database {
 		}
 
 		Settings::seedDefaults();
+		MenuFields::seedBuiltins();
 	}
 
 	/**

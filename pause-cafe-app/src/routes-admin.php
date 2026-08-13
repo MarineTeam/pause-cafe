@@ -17,6 +17,7 @@ use PauseCafe\Mailer;
 use PauseCafe\Menu;
 use PauseCafe\MenuBuilder;
 use PauseCafe\MenuChanges;
+use PauseCafe\MenuFields;
 use PauseCafe\Money;
 use PauseCafe\Notifications;
 use PauseCafe\Orders;
@@ -446,6 +447,7 @@ $router->post(
 			'capacity'     => (int) ( $_POST['capacity'] ?? 0 ),
 			'status'       => $post( 'status', 'published' ),
 			'opened_at'    => '',
+			'field_rules'  => MenuFields::rulesFromPost( $_POST ),
 		);
 
 		if ( $id ) {
@@ -728,6 +730,74 @@ $router->get(
 	}
 );
 
+/* ------------------------------------------------------------------- Fields */
+
+$router->get(
+	'/admin/fields',
+	static function () use ( $requireAdmin ): void {
+		$requireAdmin();
+
+		echo View::render(
+			'admin/fields',
+			array(
+				'title'  => 'Order fields',
+				'fields' => MenuFields::definitions(),
+			)
+		);
+	}
+);
+
+$router->post(
+	'/admin/fields/save',
+	static function () use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		try {
+			MenuFields::save(
+				array(
+					'field_key'   => $post( 'field_key' ),
+					'label'       => $post( 'label' ),
+					'type'        => $post( 'type' ),
+					'options'     => (string) ( $_POST['options'] ?? '' ),
+					'placeholder' => $post( 'placeholder' ),
+					'is_shown'    => isset( $_POST['is_shown'] ),
+					'is_required' => isset( $_POST['is_required'] ),
+					'sort_order'  => (int) ( $_POST['sort_order'] ?? 0 ),
+				),
+				( (int) ( $_POST['id'] ?? 0 ) ) ?: null
+			);
+
+			View::flash( 'success', 'Field saved.' );
+		} catch ( \RuntimeException $e ) {
+			View::flash( 'error', $e->getMessage() );
+		}
+
+		View::redirect( '/admin/fields' );
+	}
+);
+
+$router->post(
+	'/admin/fields/{id}/delete',
+	static function ( string $id ) use ( $requireAdmin ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		// Called once and held: delete() removes the row, so asking twice would
+		// report failure on the second look.
+		$removed = MenuFields::delete( (int) $id );
+
+		View::flash(
+			$removed ? 'success' : 'error',
+			$removed
+				? 'Field removed. Answers already given to it are kept on those orders.'
+				: 'That field is built in and cannot be removed. Set it to "do not ask" instead.'
+		);
+
+		View::redirect( '/admin/fields' );
+	}
+);
+
 /* ---------------------------------------------------------------- Schedules */
 
 $router->get(
@@ -781,6 +851,7 @@ $router->post(
 				'service_days_after_close' => (int) ( $_POST['service_days_after_close'] ?? 1 ),
 				'preview_upcoming'         => isset( $_POST['preview_upcoming'] ),
 				'show_on_front'            => isset( $_POST['show_on_front'] ),
+				'field_rules'              => MenuFields::rulesFromPost( $_POST ),
 				'sort_order'               => (int) ( $_POST['sort_order'] ?? 0 ),
 			),
 			$id ?: null

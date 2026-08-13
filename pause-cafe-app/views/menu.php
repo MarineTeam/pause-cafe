@@ -116,39 +116,54 @@ foreach ( $sections as $section ) {
 
 										<?php
 										/*
-										 * Name and group are prefilled from the account, so ordering
-										 * for yourself is one click. The fields stay in the form --
-										 * a closed <details> still submits them -- and only unfold
-										 * when the meal is for somebody else.
+										 * Which questions get asked is set by the organiser, per site,
+										 * per schedule and per dish.
+										 *
+										 * Anything with a value to prefill -- name and group come from
+										 * the account -- folds away, so ordering for yourself stays one
+										 * click. A closed <details> still submits its fields. A required
+										 * question with nothing to prefill has to be answered, so it
+										 * stays visible.
 										 */
+										$fields   = \PauseCafe\MenuFields::visibleFor( $item );
+										$defaults = \PauseCafe\MenuFields::collect( $item, array(), $user );
+
+										$upfront = array();
+										$folded  = array();
+
+										foreach ( $fields as $fieldKey => $field ) {
+											if ( $field['required'] && '' === (string) ( $defaults[ $fieldKey ] ?? '' ) ) {
+												$upfront[ $fieldKey ] = $field;
+											} else {
+												$folded[ $fieldKey ] = $field;
+											}
+										}
+
+										if ( $upfront ) {
+											$of = array(
+												'fields' => $upfront,
+												'values' => $defaults,
+												'prefix' => 'up' . (int) $item['id'],
+											);
+
+											include __DIR__ . '/partials/order-fields.php';
+										}
 										?>
-										<details class="dish__details">
-											<summary>Ordering for someone else?</summary>
 
-											<div class="field">
-												<label for="person-<?= (int) $item['id'] ?>">Name on this meal</label>
-												<input type="text" id="person-<?= (int) $item['id'] ?>" name="person_name"
-													value="<?= e( $user['name'] ) ?>" required>
-											</div>
+										<?php if ( $folded ) : ?>
+											<details class="dish__details">
+												<summary>Ordering for someone else?</summary>
+												<?php
+												$of = array(
+													'fields' => $folded,
+													'values' => $defaults,
+													'prefix' => 'fold' . (int) $item['id'],
+												);
 
-											<?php if ( \PauseCafe\Groups::any() ) : ?>
-												<div class="field">
-													<?php
-													$gs = array(
-														'id'    => 'group-' . (int) $item['id'],
-														'value' => $user['group_name'],
-													);
-													include __DIR__ . '/partials/group-select.php';
-													?>
-												</div>
-											<?php endif; ?>
-
-											<div class="field">
-												<label for="note-<?= (int) $item['id'] ?>">Note</label>
-												<input type="text" id="note-<?= (int) $item['id'] ?>" name="note" maxlength="200"
-													placeholder="e.g. no onions">
-											</div>
-										</details>
+												include __DIR__ . '/partials/order-fields.php';
+												?>
+											</details>
+										<?php endif; ?>
 
 										<div class="dish__buy">
 											<label class="sr-only" for="qty-<?= (int) $item['id'] ?>">Quantity</label>

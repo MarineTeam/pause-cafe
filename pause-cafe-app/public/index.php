@@ -19,6 +19,7 @@ use PauseCafe\Database;
 use PauseCafe\Groups;
 use PauseCafe\Kitchen;
 use PauseCafe\Menu;
+use PauseCafe\MenuFields;
 use PauseCafe\Money;
 use PauseCafe\Notifications;
 use PauseCafe\Orders;
@@ -274,33 +275,24 @@ $router->post(
 			View::redirect( '/' );
 		}
 
-		$personName = $post( 'person_name' );
+		/*
+		 * Only fields visible on this dish are read, and each is cleaned by its
+		 * own type. A hidden field cannot be filled in by hand-posting it, and a
+		 * select cannot be given a value it never offered.
+		 */
+		$values  = MenuFields::collect( $item, $_POST, Auth::user() );
+		$missing = MenuFields::missingRequired( $item, $values );
 
-		// Falling back to the account holder keeps the cook list readable when
-		// somebody just orders for themselves and skips the field.
-		if ( '' === $personName ) {
-			$user       = Auth::user();
-			$personName = (string) ( $user['name'] ?? '' );
+		if ( $missing ) {
+			View::flash( 'error', 'Please fill in: ' . implode( ', ', $missing ) . '.' );
+			View::redirect( '/' );
 		}
 
-		// A dropdown is a convenience on the form, not a promise about what
-		// arrives, so the value is checked against the configured list here.
-		$groupName = Groups::sanitise( $post( 'group_name' ) );
+		Cart::add( (int) $item['id'], max( 1, (int) ( $_POST['qty'] ?? 1 ) ), $values );
 
-		if ( '' === $groupName ) {
-			$user      = Auth::user();
-			$groupName = Groups::sanitise( (string) ( $user['group_name'] ?? '' ) );
-		}
+		$who = (string) ( $values[ MenuFields::PERSON ] ?? '' );
 
-		Cart::add(
-			(int) $item['id'],
-			max( 1, (int) ( $_POST['qty'] ?? 1 ) ),
-			$personName,
-			$groupName,
-			$post( 'note' )
-		);
-
-		View::flash( 'success', $item['name'] . ' added for ' . $personName . '.' );
+		View::flash( 'success', $item['name'] . ( '' !== $who ? ' added for ' . $who . '.' : ' added.' ) );
 		View::redirect( '/cart' );
 	}
 );
@@ -330,13 +322,24 @@ $router->post(
 		$requireLogin();
 		Csrf::verify();
 
-		Cart::update(
-			(int) ( $_POST['index'] ?? -1 ),
-			(int) ( $_POST['qty'] ?? 1 ),
-			$post( 'person_name' ),
-			Groups::sanitise( $post( 'group_name' ) ),
-			$post( 'note' )
-		);
+		$index = (int) ( $_POST['index'] ?? -1 );
+		$lines = Cart::lines();
+		$qty   = (int) ( $_POST['qty'] ?? 1 );
+
+		if ( ! isset( $lines[ $index ] ) ) {
+			View::redirect( '/cart' );
+		}
+
+		if ( $qty < 1 ) {
+			Cart::remove( $index );
+			View::redirect( '/cart' );
+		}
+
+		$item = Menu::item( (int) $lines[ $index ]['item_id'] );
+
+		if ( $item ) {
+			Cart::update( $index, $qty, MenuFields::collect( $item, $_POST, Auth::user() ) );
+		}
 
 		View::redirect( '/cart' );
 	}
@@ -381,6 +384,7 @@ $router->post(
 						'person_name' => $line['person_name'],
 						'group_name'  => $line['group_name'],
 						'note'        => $line['note'],
+						'extra'       => $line['extra'],
 					),
 					$cart['lines']
 				),
@@ -593,7 +597,7 @@ $router->get(
 			fputcsv( $out, $fields, ',', '"', '' );
 		};
 
-		$row( array( 'Date', 'Location', 'Dish', 'Qty', 'Name', 'Group', 'Payment', 'Paid', 'Notes', 'Account', 'Order' ) );
+		$row( array( 'Date', 'Location', 'Dish', 'Qty', 'Name', 'Group', 'Payment', 'Paid', 'Notes', 'Extras', 'Account', 'Order' ) );
 
 		foreach ( $rows as $line ) {
 			$row(
@@ -607,6 +611,9 @@ $router->get(
 					Payments::label( (string) $line['payment_method'] ),
 					'' !== $line['paid_at'] ? 'yes' : 'no',
 					trim( $line['note'] . ( '' !== $line['order_note'] ? ' / ' . $line['order_note'] : '' ) ),
+					// Answers to fields the organiser added, as one readable cell
+					// rather than a column per field that changes shape over time.
+					MenuFields::describeExtras( $line['extra_fields'] ?? '' ),
 					$line['account_name'],
 					$line['order_id'],
 				)

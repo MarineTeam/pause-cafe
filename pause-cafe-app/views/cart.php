@@ -50,25 +50,34 @@ $problems = $cart['problems'];
 								<?= Csrf::field() ?>
 								<input type="hidden" name="index" value="<?= (int) $line['index'] ?>">
 
-								<input type="text" name="person_name" value="<?= e( $line['person_name'] ) ?>"
-									aria-label="Name on this meal" required>
-
 								<?php
-								$gs = array(
-									'id'    => 'cart-group-' . (int) $line['index'],
-									'value' => $line['group_name'],
-									'label' => '',
+								// Same questions the dish asked, so an answer given at the
+								// menu can be corrected here.
+								$of = array(
+									'fields' => \PauseCafe\MenuFields::visibleFor( $line['item'] ),
+									'values' => array_merge(
+										array(
+											\PauseCafe\MenuFields::PERSON => $line['person_name'],
+											\PauseCafe\MenuFields::GROUP  => $line['group_name'],
+											\PauseCafe\MenuFields::NOTE   => $line['note'],
+										),
+										$line['extra']
+									),
+									'prefix' => 'cart' . (int) $line['index'],
 								);
-								include __DIR__ . '/partials/group-select.php';
+
+								include __DIR__ . '/partials/order-fields.php';
 								?>
 
-								<input type="number" name="qty" value="<?= (int) $line['qty'] ?>" min="1"
-									aria-label="Quantity" style="max-width:90px">
+								<div class="field">
+									<label for="cart-qty-<?= (int) $line['index'] ?>">Qty</label>
+									<input type="number" id="cart-qty-<?= (int) $line['index'] ?>" name="qty"
+										value="<?= (int) $line['qty'] ?>" min="1" style="max-width:90px">
+								</div>
 
-								<input type="text" name="note" value="<?= e( $line['note'] ) ?>" maxlength="200"
-									aria-label="Note for this meal" placeholder="Note">
-
-								<button type="submit" class="button--quiet">Update</button>
+								<div style="align-self:end">
+									<button type="submit" class="button--quiet">Update</button>
+								</div>
 							</form>
 						</td>
 						<td class="num"><?= e( Money::format( $line['subtotal'] ) ) ?></td>

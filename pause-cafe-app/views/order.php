@@ -39,7 +39,14 @@ use PauseCafe\Schedule;
 					<td><?= e( $line['location_name'] ) ?></td>
 					<td><?= e( $line['person_name'] ) ?></td>
 					<td><?= e( $line['group_name'] ) ?></td>
-					<td class="muted"><?= e( $line['note'] ?? '' ) ?></td>
+					<td class="muted">
+						<?php $extras = \PauseCafe\MenuFields::describeExtras( $line['extra_fields'] ?? '' ); ?>
+						<?= e( $line['note'] ?? '' ) ?>
+						<?php if ( '' !== $extras ) : ?>
+							<?php if ( '' !== ( $line['note'] ?? '' ) ) : ?><br><?php endif; ?>
+							<?= e( $extras ) ?>
+						<?php endif; ?>
+					</td>
 					<td class="num"><?= (int) $line['qty'] ?></td>
 					<td class="num"><?= e( Money::format( (int) $line['unit_price_cents'] ) ) ?></td>
 				</tr>

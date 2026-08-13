@@ -58,6 +58,12 @@ class Notifications {
 			if ( '' !== ( $line['note'] ?? '' ) ) {
 				$body[] = '      note: ' . $line['note'];
 			}
+
+			$extras = MenuFields::describeExtras( $line['extra_fields'] ?? '' );
+
+			if ( '' !== $extras ) {
+				$body[] = '      ' . $extras;
+			}
 		}
 
 		$body[] = '';

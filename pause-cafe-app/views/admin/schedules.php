@@ -1,5 +1,6 @@
 <?php
 use PauseCafe\Csrf;
+use PauseCafe\MenuFields;
 use PauseCafe\Schedule;
 use PauseCafe\Schedules;
 
@@ -99,6 +100,15 @@ $fields = static function ( array $rules, array $locations, array $chosen ) use 
 			Show this menu on the front page
 		</label>
 	</div>
+
+	<?php
+	$fr = array(
+		'rules' => MenuFields::decodeRules( (string) ( $rules['field_rules'] ?? '' ) ),
+		'note'  => 'Overrides the site default for dishes on this schedule. A single dish can override it again.',
+	);
+
+	include __DIR__ . '/../partials/field-rules.php';
+	?>
 
 	<div class="field">
 		<label>Pickup locations</label>

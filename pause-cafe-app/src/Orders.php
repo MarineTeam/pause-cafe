@@ -122,6 +122,7 @@ class Orders {
 					'person_name' => trim( (string) ( $line['person_name'] ?? '' ) ),
 					'group_name'  => trim( (string) ( $line['group_name'] ?? '' ) ),
 					'note'        => trim( (string) ( $line['note'] ?? '' ) ),
+					'extra'       => (array) ( $line['extra'] ?? array() ),
 				);
 			}
 
@@ -161,8 +162,9 @@ class Orders {
 
 			$insertLine = $pdo->prepare(
 				'INSERT INTO order_lines
-					(order_id, menu_item_id, item_name, location_name, qty, unit_price_cents, person_name, group_name, note)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+					(order_id, menu_item_id, item_name, location_name, qty, unit_price_cents,
+					 person_name, group_name, note, extra_fields)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
 			);
 
 			foreach ( $resolved as $line ) {
@@ -177,6 +179,10 @@ class Orders {
 						$line['person_name'],
 						$line['group_name'],
 						$line['note'],
+						// Answers to fields the organiser added, frozen with the
+						// rest of the line so a later field rename cannot rewrite
+						// what somebody actually asked for.
+						$line['extra'] ? (string) json_encode( $line['extra'] ) : '',
 					)
 				);
 			}
@@ -423,7 +429,7 @@ class Orders {
 	 */
 	public static function lineItemsFiltered( array $filters, string $sort = 'location', string $dir = 'asc' ): array {
 		$sql = "SELECT ol.id, ol.order_id, ol.item_name, ol.location_name, ol.qty,
-					   ol.unit_price_cents, ol.person_name, ol.group_name, ol.note,
+					   ol.unit_price_cents, ol.person_name, ol.group_name, ol.note, ol.extra_fields,
 					   o.service_date, o.payment_method, o.paid_at, o.created_at,
 					   o.note AS order_note,
 					   u.name AS account_name, u.email
@@ -523,7 +529,7 @@ class Orders {
 		$statement = Database::pdo()->prepare(
 			"SELECT o.id AS order_id, o.created_at, u.name AS account_name, u.email,
 					ol.location_name, ol.item_name, ol.qty, ol.unit_price_cents,
-					ol.person_name, ol.group_name
+					ol.person_name, ol.group_name, ol.note, ol.extra_fields
 			 FROM order_lines ol
 			 INNER JOIN orders o ON o.id = ol.order_id
 			 INNER JOIN users u ON u.id = o.user_id
