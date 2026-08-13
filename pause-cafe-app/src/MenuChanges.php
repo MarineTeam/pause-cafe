@@ -20,29 +20,60 @@ class MenuChanges {
 	 * who got mailed without having to thread a return value back through
 	 * Menu::save().
 	 *
-	 * @var array<int,array{item:string,notified:int}>
+	 * @var array<int,array{item:string,notified:int,suppressed:int}>
 	 */
 	private static array $announcements = array();
 
 	/**
-	 * @return array<int,array{item:string,notified:int}>
+	 * Whether to actually send. An organiser fixing a typo at 11pm can turn this
+	 * off; it silences the email only, never the order-line rename, which the
+	 * cook list depends on either way.
+	 */
+	private static bool $notify = true;
+
+	public static function setNotify( bool $on ): void {
+		self::$notify = $on;
+	}
+
+	public static function willNotify(): bool {
+		return self::$notify;
+	}
+
+	/**
+	 * @return array<int,array{item:string,notified:int,suppressed:int}>
 	 */
 	public static function announcements(): array {
 		return self::$announcements;
 	}
 
 	public static function totalNotified(): int {
+		return self::total( 'notified' );
+	}
+
+	/**
+	 * People who would have been emailed had notification been left on.
+	 */
+	public static function totalSuppressed(): int {
+		return self::total( 'suppressed' );
+	}
+
+	private static function total( string $key ): int {
 		$total = 0;
 
 		foreach ( self::$announcements as $entry ) {
-			$total += $entry['notified'];
+			$total += $entry[ $key ];
 		}
 
 		return $total;
 	}
 
+	/**
+	 * Clears the record and puts notification back on, so one request that opted
+	 * out cannot leave the next one silent.
+	 */
 	public static function forget(): void {
 		self::$announcements = array();
+		self::$notify        = true;
 	}
 
 	/**
@@ -179,6 +210,7 @@ class MenuChanges {
 		$result = array(
 			'changes'       => array(),
 			'notified'      => 0,
+			'suppressed'    => 0,
 			'lines_renamed' => 0,
 		);
 
@@ -200,23 +232,34 @@ class MenuChanges {
 			return $result;
 		}
 
+		/*
+		 * Renaming happens whether or not anyone is emailed. Skipping it would
+		 * leave the cook list with the old name for orders placed before the
+		 * correction and the new one for those after -- a data problem, not a
+		 * courtesy.
+		 */
 		if ( isset( $changes['name'] ) ) {
 			$result['lines_renamed'] = self::renameOrderLines( $itemId, $changes['name']['to'] );
 		}
 
 		$item = Menu::item( $itemId );
 
-		foreach ( $people as $person ) {
-			$sent = Notifications::orderedDishChanged( $person, $item, $changes );
+		if ( self::$notify ) {
+			foreach ( $people as $person ) {
+				$sent = Notifications::orderedDishChanged( $person, $item, $changes );
 
-			if ( $sent->ok ) {
-				++$result['notified'];
+				if ( $sent->ok ) {
+					++$result['notified'];
+				}
 			}
+		} else {
+			$result['suppressed'] = count( $people );
 		}
 
 		self::$announcements[] = array(
-			'item'     => $item ? (string) $item['name'] : '',
-			'notified' => $result['notified'],
+			'item'       => $item ? (string) $item['name'] : '',
+			'notified'   => $result['notified'],
+			'suppressed' => $result['suppressed'],
 		);
 
 		return $result;

@@ -8,6 +8,29 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.8.1 — 2026-08-12
+
+### Added
+
+- **A notify checkbox**, so a correction nobody would notice does not have to
+  wake anyone up. It appears on the per-dish editor only when the dish actually
+  has orders, and on the grid builder for the whole save. Ticked by default —
+  telling people is the safer miss.
+- The organiser is told either way: how many were emailed, or how many were not
+  "as you asked".
+
+### Notes
+
+- **The checkbox silences the email, never the rename.** Renaming a dish still
+  updates confirmed order lines whatever the box says, because that is data
+  consistency rather than courtesy — silencing it would leave the cook list with
+  two names for one pot.
+- The opt-out is per save. `MenuChanges::forget()` puts notification back on, so
+  a request that opted out cannot leave the next one silent.
+- An unticked checkbox is not submitted at all, so the form carries a companion
+  hidden field. Without it there is no way to tell "unticked" from "this form
+  has no such control", and the safe default differs between the two.
+
 ## 0.8.0 — 2026-08-12
 
 ### Added

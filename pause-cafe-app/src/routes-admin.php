@@ -265,6 +265,7 @@ $router->get(
 				'item'      => null,
 				'locations' => Menu::locations(),
 				'mode'      => Schedule::activeMode(),
+				'affected'  => 0,
 			)
 		);
 	}
@@ -368,6 +369,7 @@ $router->post(
 		}
 
 		MenuChanges::forget();
+		MenuChanges::setNotify( wants_change_emails() );
 
 		$tally = MenuBuilder::save(
 			(array) ( $_POST['dish'] ?? array() ),
@@ -376,18 +378,15 @@ $router->post(
 			$scheduleId
 		);
 
-		$notified = MenuChanges::totalNotified();
-
 		View::flash(
 			'success',
-			sprintf(
-				'Menu saved. %d added, %d updated, %d moved to draft.%s',
-				$tally['created'],
-				$tally['updated'],
-				$tally['drafted'],
-				$notified > 0
-					? sprintf( ' %d %s already ordered a changed dish and been emailed.', $notified, 1 === $notified ? 'person has' : 'people have' )
-					: ''
+			trim(
+				sprintf(
+					'Menu saved. %d added, %d updated, %d moved to draft. ',
+					$tally['created'],
+					$tally['updated'],
+					$tally['drafted']
+				) . menu_change_note()
 			)
 		);
 
@@ -416,6 +415,7 @@ $router->get(
 				'item'      => $item,
 				'locations' => Menu::locations(),
 				'mode'      => Schedule::activeMode(),
+				'affected'  => count( MenuChanges::affected( (int) $item['id'] ) ),
 			)
 		);
 	}
@@ -464,22 +464,11 @@ $router->post(
 		}
 
 		MenuChanges::forget();
+		MenuChanges::setNotify( wants_change_emails() );
 
-		$savedId  = Menu::save( $data, $id ?: null );
-		$notified = MenuChanges::totalNotified();
+		$savedId = Menu::save( $data, $id ?: null );
 
-		View::flash(
-			'success',
-			$notified > 0
-				? sprintf(
-					'Saved. %d %s already ordered this and %s been emailed about the change.',
-					$notified,
-					1 === $notified ? 'person had' : 'people had',
-					1 === $notified ? 'has' : 'have'
-				)
-				: 'Saved.'
-		);
-
+		View::flash( 'success', trim( 'Saved. ' . menu_change_note() ) );
 		View::redirect( '/admin/menu/' . $savedId );
 	}
 );
@@ -899,6 +888,50 @@ $router->post(
 		View::redirect( '/admin/settings' );
 	}
 );
+
+/**
+ * Whether the organiser left the "email anyone who already ordered" box ticked.
+ *
+ * An unticked checkbox is not submitted at all, so the form carries a companion
+ * hidden field. Without it there would be no way to tell "unticked" from "this
+ * form has no such control", and the safe reading of those two differs.
+ */
+function wants_change_emails(): bool {
+	if ( ! isset( $_POST['notify_present'] ) ) {
+		return true;
+	}
+
+	return isset( $_POST['notify_orders'] );
+}
+
+/**
+ * The sentence about who was, or was not, emailed. Empty when nothing that
+ * anyone had ordered changed.
+ */
+function menu_change_note(): string {
+	$notified   = MenuChanges::totalNotified();
+	$suppressed = MenuChanges::totalSuppressed();
+
+	if ( $notified > 0 ) {
+		return sprintf(
+			'%d %s already ordered a changed dish and %s been emailed.',
+			$notified,
+			1 === $notified ? 'person had' : 'people had',
+			1 === $notified ? 'has' : 'have'
+		);
+	}
+
+	if ( $suppressed > 0 ) {
+		return sprintf(
+			'%d %s already ordered a changed dish and %s not emailed, as you asked.',
+			$suppressed,
+			1 === $suppressed ? 'person had' : 'people had',
+			1 === $suppressed ? 'was' : 'were'
+		);
+	}
+
+	return '';
+}
 
 function sanitise_time( string $value, string $fallback ): string {
 	return preg_match( '/^([01]?\d|2[0-3]):([0-5]\d)$/', $value ) ? $value : $fallback;

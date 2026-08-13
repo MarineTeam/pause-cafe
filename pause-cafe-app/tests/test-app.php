@@ -1322,4 +1322,32 @@ Menu::save( array_merge( Menu::item( $correctedId ), array( 'name' => 'Chicken p
 check( 'so only the live orders are mailed', MenuChanges::totalNotified(), 2 );
 check( 'and their line keeps its own name', Orders::lines( $goneOrder )[0]['item_name'], 'Chicken jalfrezi' );
 
+echo "\nAn organiser can correct something quietly\n";
+
+unlink( $logPath );
+MenuChanges::forget();
+MenuChanges::setNotify( false );
+
+Menu::save( array_merge( Menu::item( $correctedId ), array( 'name' => 'Chicken rogan josh' ) ), $correctedId );
+
+check( 'nobody is emailed', MenuChanges::totalNotified(), 0 );
+check( 'but they are still counted', MenuChanges::totalSuppressed(), 2 );
+check( 'and no message is written at all', is_file( $logPath ), false );
+
+// Silencing the email must not silence the data fix, or the kitchen ends up
+// with two names for one pot.
+check(
+	'the rename still reaches the cook list',
+	Orders::lineItemsFiltered( array( 'from' => $changeDate, 'to' => $changeDate ) )[0]['item_name'],
+	'Chicken rogan josh'
+);
+
+check( 'notification is off while it is off', MenuChanges::willNotify(), false );
+MenuChanges::forget();
+check( 'and forgetting turns it back on', MenuChanges::willNotify(), true );
+
+// The opt-out is per save, so the next one speaks up again unless told not to.
+Menu::save( array_merge( Menu::item( $correctedId ), array( 'name' => 'Chicken dhansak' ) ), $correctedId );
+check( 'so the next correction notifies again', MenuChanges::totalNotified(), 2 );
+
 finish();

@@ -143,6 +143,37 @@ $toInput = static function ( string $stored ): string {
 		</details>
 	<?php endif; ?>
 
+	<?php if ( $affected > 0 ) : ?>
+		<div class="panel">
+			<h3>People who have already ordered this</h3>
+			<p class="muted">
+				<?= (int) $affected ?>
+				<?= 1 === (int) $affected ? 'person has' : 'people have' ?>
+				a confirmed order for this dish.
+			</p>
+
+			<?php
+			/*
+			 * An unticked checkbox is not submitted, so this hidden field is what
+			 * tells the server the control was on the form at all.
+			 */
+			?>
+			<input type="hidden" name="notify_present" value="1">
+
+			<div class="field">
+				<label>
+					<input type="checkbox" name="notify_orders" value="1" checked>
+					Email them about this change
+				</label>
+				<p class="help">
+					Leave it ticked unless you are fixing something they would not
+					notice. Either way, renaming the dish updates their order so the
+					kitchen list stays consistent, and nothing more is charged.
+				</p>
+			</div>
+		</div>
+	<?php endif; ?>
+
 	<button type="submit">Save dish</button>
 	<a class="button button--quiet" href="/admin/menu">Cancel</a>
 </form>
