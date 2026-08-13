@@ -8,6 +8,28 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.7.1 — 2026-08-12
+
+### Fixed
+
+- **The front page was never a grid.** Each pickup location rendered its own
+  grid, so a location with one dish put that card alone in column one with two
+  empty columns beside it, three times down the page. A week's dishes now share
+  one grid and sit side by side, with the pickup shown as a label on each card.
+- **"Sign in to order" stretched the full width of its card.** The card is a
+  flex column, and flex items are blockified — an `inline-block` button became
+  `block`. It is wrapped now, so it takes its natural width.
+- **The order form made every card enormous.** Four stacked inputs per dish.
+  Name, group and note now sit in a closed disclosure — still submitted, since a
+  closed `<details>` posts its fields — leaving quantity and the button on one
+  row. Ordering for yourself is one click; the fields unfold only when the meal
+  is for somebody else.
+
+### Changed
+
+- The stylesheet's cache-buster is the app version rather than a hardcoded `v=1`,
+  so a release cannot ship CSS that browsers keep a stale copy of.
+
 ## 0.7.0 — 2026-08-12
 
 ### Added

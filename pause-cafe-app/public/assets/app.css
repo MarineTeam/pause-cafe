@@ -182,12 +182,42 @@ label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 5px; }
 }
 
 .dish { border: 1px solid var(--line); padding: 22px; display: flex; flex-direction: column; }
-.dish h3 { margin-bottom: 6px; }
+
+.dish__where {
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--ink-soft);
+	margin: 0 0 6px;
+}
+
+.dish__name { font-size: 19px; margin: 0 0 6px; }
 .dish__desc { color: var(--ink-soft); font-size: 15px; }
 .dish__price { font-weight: 600; margin: 0 0 14px; }
 .dish__note { font-size: 14px; color: var(--warn-ink); background: var(--warn-bg); padding: 8px 10px; margin: 0 0 12px; }
 .dish__left { font-size: 14px; color: var(--ink-soft); margin: 0 0 12px; }
-.dish form { margin-top: auto; }
+
+/* Pushes the buy row to the bottom so cards of differing height line up. */
+.dish__form, .dish__action { margin-top: auto; margin-bottom: 0; }
+
+.dish__details { margin-bottom: 12px; }
+.dish__details summary { font-size: 14px; color: var(--ink-soft); cursor: pointer; }
+.dish__details > .field { margin-top: 12px; margin-bottom: 0; }
+
+/* Quantity beside the button rather than stacked above it. */
+.dish__buy { display: flex; gap: 8px; align-items: stretch; }
+.dish__buy input[type="number"] { width: 4.5em; flex: 0 0 auto; text-align: center; }
+.dish__buy button { flex: 1 1 auto; }
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
 
 /* Tables ---------------------------------------------------------------- */
 
