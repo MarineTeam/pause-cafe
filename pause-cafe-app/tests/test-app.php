@@ -60,6 +60,7 @@ class AlwaysFailsTransport implements Transport {
 		return Result::failed( $this->id(), 'Nope.' );
 	}
 }
+use PauseCafe\Schedules;
 use PauseCafe\Settings;
 use PauseCafe\Users;
 use PauseCafe\Wallet;
@@ -1076,5 +1077,101 @@ check( 'and orderable straight away', $festive[0]['window']->isOrderable(), true
 check( 'running to the next cutoff', $festive[0]['window']->closeAt->format( 'D Y-m-d H:i' ), 'Sat 2026-12-05 13:00' );
 
 Settings::set( 'active_mode', Schedule::MODE_PLANNED );
+
+/* ------------------------------------------------------------------ */
+
+echo "\nA second schedule runs on its own rhythm\n";
+
+check( 'there is a default schedule to begin with', array_keys( Schedules::all() ), array( Schedules::DEFAULT_ID ) );
+check( 'whose rules come from settings', Schedules::rulesFor( Schedules::DEFAULT_ID )['open_days_before'], 5 );
+
+$supperId = Schedules::save(
+	array(
+		'name'              => 'Wednesday supper',
+		'mode'              => Schedule::MODE_PLANNED,
+		'service_weekday'   => 3,
+		'open_days_before'  => 2,
+		'open_time'         => '08:00',
+		'close_days_before' => 1,
+		'close_time'        => '18:00',
+		'show_on_front'     => true,
+	)
+);
+
+check( 'the named schedule is listed', Schedules::named()[ $supperId ]['name'], 'Wednesday supper' );
+check( 'and joins the default', count( Schedules::all() ), 2 );
+check( 'an unknown id falls back to the default', Schedules::rulesFor( 9999 )['id'], Schedules::DEFAULT_ID );
+
+$wednesdays = Schedule::serviceDatesInMonth( 2027, 1, 3 );
+
+check( 'the weekday argument picks Wednesdays', count( $wednesdays ) >= 4, true );
+
+$supperDate = $wednesdays[1];
+
+check( 'and they really are Wednesdays', ( new DateTimeImmutable( $supperDate ) )->format( 'l' ), 'Wednesday' );
+
+MenuBuilder::save( array( $supperDate => array( $rcc => 'Wednesday hotpot' ) ), array(), array(), $supperId );
+
+$hotpot = Menu::itemBySlot( $supperDate, $rcc, $supperId );
+
+check( 'the dish is filed under its schedule', (int) $hotpot['schedule_id'], $supperId );
+check(
+	'and opens by that schedule, not the default',
+	$hotpot['window']->openFrom->format( 'D H:i' ),
+	'Mon 08:00'
+);
+check( 'closing by it too', $hotpot['window']->closeAt->format( 'D H:i' ), 'Tue 18:00' );
+
+echo "\nTwo schedules can share a date and a location without colliding\n";
+
+MenuBuilder::save( array( $supperDate => array( $rcc => 'Default day dish' ) ), array(), array(), Schedules::DEFAULT_ID );
+
+$onDefault = Menu::itemBySlot( $supperDate, $rcc, Schedules::DEFAULT_ID );
+
+check( 'the default cell holds its own dish', $onDefault['name'], 'Default day dish' );
+check( 'the named cell is untouched', Menu::itemBySlot( $supperDate, $rcc, $supperId )['name'], 'Wednesday hotpot' );
+check( 'and they are different rows', (int) $onDefault['id'] !== (int) $hotpot['id'], true );
+
+// The default is planned with a Sunday service weekday, so the same calendar
+// day resolves to a different window under each schedule.
+check(
+	'each resolves by its own rules',
+	$onDefault['window']->openFrom->format( 'H:i' ) !== $hotpot['window']->openFrom->format( 'H:i' ),
+	true
+);
+
+echo "\nLocations can be limited per schedule\n";
+
+check( 'with none chosen a schedule serves them all', count( Schedules::locationsFor( $supperId ) ), 3 );
+
+Schedules::setLocations( $supperId, array( $rcc ) );
+
+check( 'choosing some narrows it', count( Schedules::locationsFor( $supperId ) ), 1 );
+check( 'to the right one', Schedules::locationsFor( $supperId )[0]['name'], 'RCC' );
+check( 'while the default still serves all', count( Schedules::locationsFor( Schedules::DEFAULT_ID ) ), 3 );
+
+echo "\nThe front page honours the show-on-front switch\n";
+
+check( 'both are on the front by default', count( Schedules::onFront() ), 2 );
+
+Schedules::save( array_merge( Schedules::named()[ $supperId ], array( 'show_on_front' => false ) ), $supperId );
+
+check( 'turning one off drops it', array_keys( Schedules::onFront() ), array( Schedules::DEFAULT_ID ) );
+
+Settings::set( 'default_show_on_front', 'no' );
+check( 'and the default can be hidden too', Schedules::onFront(), array() );
+Settings::set( 'default_show_on_front', 'yes' );
+
+echo "\nRemoving a schedule leaves its dishes resolvable\n";
+
+Schedules::delete( $supperId );
+
+check( 'it is gone from the list', count( Schedules::all() ), 1 );
+
+$orphaned = Menu::item( (int) $hotpot['id'] );
+
+check( 'its dish survives', $orphaned['name'], 'Wednesday hotpot' );
+check( 'detached to the default', null === $orphaned['schedule_id'], true );
+check( 'and still resolves a window', $orphaned['window']->source, Schedule::MODE_PLANNED );
 
 finish();

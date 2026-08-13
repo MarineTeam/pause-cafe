@@ -25,6 +25,7 @@ use PauseCafe\Orders;
 use PauseCafe\Payments;
 use PauseCafe\Router;
 use PauseCafe\Schedule;
+use PauseCafe\Schedules;
 use PauseCafe\Settings;
 use PauseCafe\Users;
 use PauseCafe\View;
@@ -110,41 +111,53 @@ $router->post(
 $router->get(
 	'/',
 	static function (): void {
-		$serviceDate = Menu::currentServiceDate();
-		$locations   = Menu::locations();
-		$blocks      = array();
+		/*
+		 * One section per schedule that asks to be on the front page. Each works
+		 * out its own current week, since two menus on different rhythms are not
+		 * on the same one.
+		 */
+		$sections = array();
 
-		if ( $serviceDate ) {
-			foreach ( $locations as $location ) {
-				$items = array_values(
-					array_filter(
-						Menu::itemsForServiceDate( $serviceDate, (int) $location['id'] ),
-						static fn( $item ) => $item['window']->isListed()
-					)
-				);
+		foreach ( Schedules::onFront() as $scheduleId => $rules ) {
+			$serviceDate = Menu::currentServiceDate( $scheduleId );
+			$blocks      = array();
 
-				if ( $items ) {
-					$blocks[] = array(
-						'location' => $location,
-						'items'    => $items,
+			if ( $serviceDate ) {
+				foreach ( Schedules::locationsFor( $scheduleId ) as $location ) {
+					$items = array_values(
+						array_filter(
+							Menu::itemsForServiceDate( $serviceDate, (int) $location['id'], true, $scheduleId ),
+							static fn( $item ) => $item['window']->isListed()
+						)
 					);
+
+					if ( $items ) {
+						$blocks[] = array(
+							'location' => $location,
+							'items'    => $items,
+						);
+					}
 				}
 			}
-		}
 
-		// A blacked-out week still resolves a date, so the label can be shown
-		// rather than an empty page.
-		$blackout = $serviceDate && Blackouts::isBlackout( $serviceDate )
-			? Blackouts::label( $serviceDate )
-			: '';
+			// A blacked-out week still resolves a date, so the label can be shown
+			// rather than an empty page.
+			$sections[] = array(
+				'rules'       => $rules,
+				'serviceDate' => $serviceDate,
+				'blocks'      => $blocks,
+				'blackout'    => $serviceDate && Blackouts::isBlackout( $serviceDate )
+					? Blackouts::label( $serviceDate )
+					: '',
+			);
+		}
 
 		echo View::render(
 			'menu',
 			array(
-				'title'       => Settings::get( 'menu_heading' ),
-				'serviceDate' => $serviceDate,
-				'blocks'      => $blocks,
-				'blackout'    => $blackout,
+				'title'    => Settings::get( 'menu_heading' ),
+				'sections' => $sections,
+				'columns'  => max( 1, min( 6, Settings::int( 'front_grid_columns', 3 ) ) ),
 			)
 		);
 	}

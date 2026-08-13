@@ -32,9 +32,15 @@ class Settings {
 			'preview_upcoming'         => 'no',
 			'default_price'            => '10.00',
 
-			// Storefront copy.
+			// Storefront copy and layout.
 			'menu_heading'             => 'Sunday Menu',
 			'menu_note'                => 'All our meats are either Non-Medicated and or Organic.',
+			'front_grid_columns'       => '3',
+
+			// The default schedule. Named schedules live in the schedules table;
+			// these are the rules for the one every install starts with.
+			'default_schedule_name'    => 'Sunday lunch',
+			'default_show_on_front'    => 'yes',
 
 			// Email. Transport-specific keys (smtp_*, resend_*) are not listed:
 			// each transport reads its own with a sensible fallback, so adding one

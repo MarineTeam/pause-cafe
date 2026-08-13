@@ -8,6 +8,37 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.7.0 — 2026-08-12
+
+### Added
+
+- **Multiple schedules.** A Sunday lunch and a Wednesday supper can run side by
+  side, each with its own rules, and the builder has a picker to switch between
+  them.
+- Each schedule sets **when ordering opens** (planned ahead, on publish, or
+  manual), **the day food is served**, how many days before it opens and closes,
+  **the closing time**, whether upcoming weeks preview, and **which pickup
+  locations it serves**.
+- **Show on front page** per schedule, so a staff-only menu can exist without
+  appearing publicly.
+- **Dishes across on the front page**, an organiser setting, default 3. It steps
+  down to two and then one on narrower screens whatever is chosen.
+- Per-dish from/until still overrides whichever schedule a dish belongs to.
+
+### Notes
+
+- **There is always a default schedule, and its rules live in Settings.** Named
+  schedules are rows in a new table. One source of truth each; nothing is
+  written to both. A site that only ever wants one menu never has to know the
+  table exists, and every existing install keeps working untouched — which is
+  why the 296 assertions written before this change still pass unaltered.
+- A dish with no schedule follows the default, and deleting a schedule detaches
+  its dishes to the default rather than leaving them unresolvable.
+- Cells are keyed on schedule as well as date and location, so two schedules
+  serving the same campus on the same day do not overwrite each other.
+- The front page works out the current week **per schedule**, since two menus on
+  different rhythms are not on the same one.
+
 ## 0.6.0 — 2026-08-12
 
 ### Added

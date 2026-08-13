@@ -20,6 +20,7 @@ in `public/index.php` and `routes-admin.php`; rendering lives in `views/`.
 | File | |
 | --- | --- |
 | `Schedule.php` | The rules engine. Three modes, plus `freeze()` so tests can pin the clock. |
+| `Schedules.php` | Named schedules, and the settings-backed default every install has. |
 | `Window.php` | The answer for one dish: open time, close time, service date, state. |
 | `Blackouts.php` | Days no menu runs. A blackout voids a window. |
 | `Settings.php` | Key/value store, cached per request. `active_mode` chooses the schedule mode. |
@@ -55,6 +56,11 @@ ledger. Floats appear only at the edges, in `Money::format()` and
 also stores the running balance so a statement reads back without re-adding
 history, but the entries are the truth. Write through `Wallet::post()` and
 nothing else.
+
+**The default schedule is backed by settings, named ones by rows.** One source
+of truth each — never write a schedule's rules to both. `Schedules::rulesFor()`
+is the only thing that needs to know which is which, and an id it does not
+recognise falls back to the default rather than leaving a dish unresolvable.
 
 **A sort key cannot be bound.** `ORDER BY` takes no parameters, so the kitchen
 table's sort column is looked up in `Orders::sortableColumns()` and anything

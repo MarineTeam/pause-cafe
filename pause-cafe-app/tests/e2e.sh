@@ -135,6 +135,34 @@ curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/builder" \
 has "a cleared dish becomes a draft" "$(curl -s -b $A -c $A "$BASE/admin/menu")" "Draft"
 
 echo ""
+echo "Schedules"
+SCHED=$(curl -s -b $A -c $A "$BASE/admin/schedules")
+has "the default schedule is listed" "$SCHED" "Sunday lunch"
+has "marked as the default" "$SCHED" "Default"
+has "pointing at settings for its rules" "$SCHED" 'href="/admin/settings"'
+has "and there is a form to add another" "$SCHED" "Add a schedule"
+
+T=$(tok $A /admin/schedules)
+NEW=$(curl -s -o /dev/null -w '%{http_code}' -b $A -c $A -X POST "$BASE/admin/schedules/save" \
+  -d "_token=$T" -d "name=Wednesday supper" -d "mode=planned" \
+  -d "service_weekday=3" -d "open_days_before=2" -d "open_time=08:00" \
+  -d "close_days_before=1" -d "close_time=18:00" -d "close_weekday=6" \
+  -d "service_days_after_close=1" -d "show_on_front=1" -d "locations[]=2")
+want "creating one redirects" "$NEW" "302"
+
+SCHED=$(curl -s -b $A -c $A "$BASE/admin/schedules")
+has "the new schedule appears" "$SCHED" "Wednesday supper"
+has "with a link to build its menu" "$SCHED" 'builder?schedule='
+
+has "the builder now offers a schedule picker" \
+  "$(curl -s -b $A -c $A "$BASE/admin/menu/builder")" 'name="schedule"'
+
+echo ""
+echo "Front page grid"
+has "the dish grid carries the column count" "$(curl -s "$BASE/")" 'style="--cols: 3"'
+has "and settings can change it" "$(curl -s -b $A -c $A "$BASE/admin/settings")" 'name="front_grid_columns"'
+
+echo ""
 echo "Registration and approval"
 T=$(tok $M /register)
 curl -s -o /dev/null -b $M -c $M -X POST "$BASE/register" \

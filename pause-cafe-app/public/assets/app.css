@@ -153,16 +153,32 @@ label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 5px; }
 .menu-head h1 { margin-bottom: 6px; }
 .menu-state { color: var(--ink-soft); margin: 0; }
 
-.location { margin-bottom: 56px; }
-.location h2 { text-align: center; }
+.menu-section { margin-bottom: 3rem; }
+.menu-section__name { text-align: center; margin-bottom: 4px; }
 
+.location { margin-bottom: 56px; }
+.location h2, .location h3 { text-align: center; }
+
+/*
+ * Column count is set per page by the organiser, through --cols on the list.
+ * It steps down on narrower screens regardless, since three columns of forms
+ * do not fit on a phone.
+ */
 .dishes {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+	grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
 	gap: 28px;
 	list-style: none;
 	padding: 0;
 	margin: 0;
+}
+
+@media (max-width: 900px) {
+	.dishes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+	.dishes { grid-template-columns: 1fr; }
 }
 
 .dish { border: 1px solid var(--line); padding: 22px; display: flex; flex-direction: column; }

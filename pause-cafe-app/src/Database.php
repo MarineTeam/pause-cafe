@@ -190,6 +190,44 @@ class Database {
 		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_lines_order ON order_lines(order_id)' );
 		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_lines_item ON order_lines(menu_item_id)' );
 
+		/*
+		 * Named schedules, for sites running more than one menu -- a Sunday lunch
+		 * closing Saturday 1pm and a Wednesday supper closing Tuesday evening,
+		 * side by side.
+		 *
+		 * There is always an unnamed default schedule whose rules live in
+		 * settings; a dish with no schedule_id uses it. That keeps every existing
+		 * install working untouched and means a site that only ever wants one
+		 * menu never has to know this table exists.
+		 */
+		$pdo->exec(
+			"CREATE TABLE IF NOT EXISTS schedules (
+				id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+				name                     TEXT    NOT NULL,
+				mode                     TEXT    NOT NULL DEFAULT 'planned',
+				service_weekday          INTEGER NOT NULL DEFAULT 0,
+				open_days_before         INTEGER NOT NULL DEFAULT 5,
+				open_time                TEXT    NOT NULL DEFAULT '12:00',
+				close_days_before        INTEGER NOT NULL DEFAULT 1,
+				close_time               TEXT    NOT NULL DEFAULT '13:00',
+				close_weekday            INTEGER NOT NULL DEFAULT 6,
+				service_days_after_close INTEGER NOT NULL DEFAULT 1,
+				preview_upcoming         TEXT    NOT NULL DEFAULT 'no',
+				show_on_front            TEXT    NOT NULL DEFAULT 'yes',
+				sort_order               INTEGER NOT NULL DEFAULT 0
+			)"
+		);
+
+		// Which pickup locations a schedule serves. No rows for a schedule means
+		// it serves all of them.
+		$pdo->exec(
+			'CREATE TABLE IF NOT EXISTS schedule_locations (
+				schedule_id INTEGER NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+				location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+				PRIMARY KEY ( schedule_id, location_id )
+			)'
+		);
+
 		$pdo->exec(
 			"CREATE TABLE IF NOT EXISTS blackouts (
 				service_date TEXT PRIMARY KEY,
@@ -215,6 +253,9 @@ class Database {
 		// A note against one meal -- "no onions" -- as opposed to orders.note,
 		// which is about the order as a whole.
 		self::addColumnIfMissing( 'order_lines', 'note', "TEXT NOT NULL DEFAULT ''" );
+
+		// NULL means the default schedule, whose rules are in settings.
+		self::addColumnIfMissing( 'menu_items', 'schedule_id', 'INTEGER NULL' );
 
 		self::seed();
 	}

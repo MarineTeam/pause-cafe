@@ -4,6 +4,7 @@ $current = parse_url( $_SERVER['REQUEST_URI'] ?? '/admin', PHP_URL_PATH ) ?: '/a
 $tabs = array(
 	'/admin'          => 'Overview',
 	'/admin/menu'     => 'Menu',
+	'/admin/schedules' => 'Schedules',
 	'/admin/orders'   => 'Orders',
 	'/kitchen'        => 'Kitchen list',
 	'/admin/users'    => 'People',

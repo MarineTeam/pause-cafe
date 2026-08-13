@@ -72,7 +72,12 @@ class Menu {
 	/**
 	 * @return array[]
 	 */
-	public static function itemsForServiceDate( string $serviceDate, int $locationId = 0, bool $publishedOnly = true ): array {
+	public static function itemsForServiceDate(
+		string $serviceDate,
+		int $locationId = 0,
+		bool $publishedOnly = true,
+		$scheduleId = null
+	): array {
 		$sql    = 'SELECT i.*, l.name AS location_name
 				   FROM menu_items i
 				   LEFT JOIN locations l ON l.id = i.location_id
@@ -86,6 +91,15 @@ class Menu {
 		if ( $locationId ) {
 			$sql     .= ' AND i.location_id = ?';
 			$params[] = $locationId;
+		}
+
+		if ( null !== $scheduleId ) {
+			if ( Schedules::DEFAULT_ID === (int) $scheduleId ) {
+				$sql .= ' AND i.schedule_id IS NULL';
+			} else {
+				$sql     .= ' AND i.schedule_id = ?';
+				$params[] = (int) $scheduleId;
+			}
 		}
 
 		$sql .= ' ORDER BY l.sort_order, i.name';
@@ -137,10 +151,14 @@ class Menu {
 	 *
 	 * @return string[]
 	 */
-	public static function serviceDates(): array {
+	public static function serviceDates( $scheduleId = null ): array {
 		$dates = array();
 
 		foreach ( self::allItems( true ) as $item ) {
+			if ( null !== $scheduleId && (int) ( $item['schedule_id'] ?? 0 ) !== (int) $scheduleId ) {
+				continue;
+			}
+
 			$date = $item['window']->serviceDate;
 
 			if ( '' !== $date ) {
@@ -156,11 +174,14 @@ class Menu {
 
 	/**
 	 * The week the storefront should show: the earliest date not yet past.
+	 *
+	 * Worked out per schedule, since two menus on different rhythms are on
+	 * different weeks.
 	 */
-	public static function currentServiceDate(): ?string {
+	public static function currentServiceDate( $scheduleId = null ): ?string {
 		$today = Schedule::now()->format( 'Y-m-d' );
 
-		foreach ( self::serviceDates() as $date ) {
+		foreach ( self::serviceDates( $scheduleId ) as $date ) {
 			if ( $date >= $today ) {
 				return $date;
 			}
@@ -176,21 +197,31 @@ class Menu {
 	 * the grid is what wrote that column, and a lookup that went through the
 	 * schedule would not find a draft or a dish whose mode derives its date.
 	 */
-	public static function itemBySlot( string $serviceDate, int $locationId ): ?array {
+	public static function itemBySlot( string $serviceDate, int $locationId, $scheduleId = Schedules::DEFAULT_ID ): ?array {
 		if ( '' === $serviceDate || ! $locationId ) {
 			return null;
 		}
 
-		$statement = Database::pdo()->prepare(
-			'SELECT i.*, l.name AS location_name
-			 FROM menu_items i
-			 LEFT JOIN locations l ON l.id = i.location_id
-			 WHERE i.service_date = ? AND i.location_id = ?
-			 ORDER BY i.id
-			 LIMIT 1'
-		);
+		$sql    = 'SELECT i.*, l.name AS location_name
+				   FROM menu_items i
+				   LEFT JOIN locations l ON l.id = i.location_id
+				   WHERE i.service_date = ? AND i.location_id = ?';
+		$params = array( $serviceDate, $locationId );
 
-		$statement->execute( array( $serviceDate, $locationId ) );
+		// Two schedules can serve the same location on the same day, so the cell
+		// is only unique once the schedule is part of the lookup.
+		if ( Schedules::DEFAULT_ID === (int) $scheduleId ) {
+			$sql .= ' AND i.schedule_id IS NULL';
+		} else {
+			$sql     .= ' AND i.schedule_id = ?';
+			$params[] = (int) $scheduleId;
+		}
+
+		$sql .= ' ORDER BY i.id LIMIT 1';
+
+		$statement = Database::pdo()->prepare( $sql );
+
+		$statement->execute( $params );
 
 		$row = $statement->fetch();
 
@@ -265,6 +296,8 @@ class Menu {
 			'close_at'     => (string) ( $data['close_at'] ?? '' ),
 			'capacity'     => max( 0, (int) ( $data['capacity'] ?? 0 ) ),
 			'status'       => 'draft' === ( $data['status'] ?? 'published' ) ? 'draft' : 'published',
+			// NULL is the default schedule, whose rules live in settings.
+			'schedule_id'  => ( (int) ( $data['schedule_id'] ?? 0 ) ) > 0 ? (int) $data['schedule_id'] : null,
 		);
 
 		$pdo = Database::pdo();

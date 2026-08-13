@@ -117,13 +117,17 @@ class Schedule {
 	 * @param array $item Row from menu_items.
 	 */
 	public static function forItem( array $item ): Window {
+		// Which rules apply is a property of the dish's schedule, not of the
+		// site: two menus can run side by side on different rhythms.
+		$rules = Schedules::rulesFor( $item['schedule_id'] ?? Schedules::DEFAULT_ID );
+
 		$window          = new Window();
-		$window->preview = Settings::bool( 'preview_upcoming' );
+		$window->preview = (bool) $rules['preview_upcoming'];
 
 		$serviceMeta = (string) ( $item['service_date'] ?? '' );
 		$from        = self::parseDateTime( (string) ( $item['open_from'] ?? '' ) );
 		$until       = self::parseDateTime( (string) ( $item['close_at'] ?? '' ) );
-		$mode        = self::activeMode();
+		$mode        = (string) $rules['mode'];
 
 		if ( $from && $until && $until > $from ) {
 			// A dish carrying its own window always wins.
@@ -135,14 +139,14 @@ class Schedule {
 
 			if ( $service ) {
 				$window->openFrom = self::applyTime(
-					$service->modify( '-' . Settings::int( 'open_days_before', 5 ) . ' days' ),
-					Settings::get( 'open_time' ),
+					$service->modify( '-' . (int) $rules['open_days_before'] . ' days' ),
+					(string) $rules['open_time'],
 					12
 				);
 
 				$window->closeAt = self::applyTime(
-					$service->modify( '-' . Settings::int( 'close_days_before', 1 ) . ' days' ),
-					Settings::get( 'close_time' ),
+					$service->modify( '-' . (int) $rules['close_days_before'] . ' days' ),
+					(string) $rules['close_time'],
 					13
 				);
 
@@ -155,8 +159,8 @@ class Schedule {
 				$window->openFrom = $opened;
 				$window->closeAt  = self::nextWeekdayAt(
 					$opened,
-					Settings::int( 'close_weekday', 6 ),
-					Settings::get( 'close_time' )
+					(int) $rules['close_weekday'],
+					(string) $rules['close_time']
 				);
 
 				$window->source = self::MODE_ON_PUBLISH;
@@ -167,7 +171,7 @@ class Schedule {
 			return $window;
 		}
 
-		$window->serviceDate = self::deriveServiceDate( $window, $serviceMeta );
+		$window->serviceDate = self::deriveServiceDate( $window, $serviceMeta, (int) $rules['service_days_after_close'] );
 
 		if ( '' !== $window->serviceDate && Blackouts::isBlackout( $window->serviceDate ) ) {
 			$window->blackoutLabel = Blackouts::label( $window->serviceDate );
@@ -181,7 +185,7 @@ class Schedule {
 	 * Every mode produces a service date, which is what lets one kitchen report
 	 * cover all three without knowing which is in force.
 	 */
-	private static function deriveServiceDate( Window $window, string $explicit ): string {
+	private static function deriveServiceDate( Window $window, string $explicit, int $daysAfterClose ): string {
 		if ( '' !== $explicit && self::parseDate( $explicit ) ) {
 			return $explicit;
 		}
@@ -191,7 +195,7 @@ class Schedule {
 		}
 
 		return $window->closeAt
-			->modify( '+' . Settings::int( 'service_days_after_close', 1 ) . ' days' )
+			->modify( '+' . $daysAfterClose . ' days' )
 			->format( 'Y-m-d' );
 	}
 
@@ -200,8 +204,8 @@ class Schedule {
 	 *
 	 * @return string[]
 	 */
-	public static function serviceDatesInMonth( int $year, int $month ): array {
-		$weekday = Settings::int( 'service_weekday', 0 );
+	public static function serviceDatesInMonth( int $year, int $month, ?int $weekday = null ): array {
+		$weekday = null !== $weekday ? $weekday : Settings::int( 'service_weekday', 0 );
 		$dates   = array();
 
 		$cursor = DateTimeImmutable::createFromFormat(

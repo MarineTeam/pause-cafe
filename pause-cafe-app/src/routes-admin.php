@@ -21,6 +21,7 @@ use PauseCafe\Notifications;
 use PauseCafe\Orders;
 use PauseCafe\Payments;
 use PauseCafe\Schedule;
+use PauseCafe\Schedules;
 use PauseCafe\Settings;
 use PauseCafe\Users;
 use PauseCafe\View;
@@ -277,8 +278,15 @@ $router->get(
 	static function () use ( $requireAdmin, $query ): void {
 		$requireAdmin();
 
-		$mode      = Schedule::activeMode();
-		$locations = Menu::locations();
+		$scheduleId = (int) $query( 'schedule', (string) Schedules::DEFAULT_ID );
+
+		if ( ! Schedules::exists( $scheduleId ) ) {
+			$scheduleId = Schedules::DEFAULT_ID;
+		}
+
+		$rules     = Schedules::rulesFor( $scheduleId );
+		$mode      = (string) $rules['mode'];
+		$locations = Schedules::locationsFor( $scheduleId );
 		$month     = $query( 'month' );
 
 		if ( ! preg_match( '/^(\d{4})-(\d{2})$/', $month, $matches ) ) {
@@ -298,16 +306,16 @@ $router->get(
 		// about to put live, so the grid collapses to a single row.
 		$dates = Schedule::MODE_ON_PUBLISH === $mode
 			? array()
-			: Schedule::serviceDatesInMonth( $year, $index );
+			: Schedule::serviceDatesInMonth( $year, $index, (int) $rules['service_weekday'] );
 
-		$current = Menu::currentServiceDate();
+		$current = Menu::currentServiceDate( $scheduleId );
 		$rows    = array();
 
 		foreach ( $dates as $date ) {
 			$cells = array();
 
 			foreach ( $locations as $location ) {
-				$cells[ (int) $location['id'] ] = Menu::itemBySlot( $date, (int) $location['id'] );
+				$cells[ (int) $location['id'] ] = Menu::itemBySlot( $date, (int) $location['id'], $scheduleId );
 			}
 
 			$rows[ $date ] = $cells;
@@ -317,7 +325,7 @@ $router->get(
 
 		if ( Schedule::MODE_ON_PUBLISH === $mode && $current ) {
 			foreach ( $locations as $location ) {
-				$found = Menu::itemsForServiceDate( $current, (int) $location['id'], false );
+				$found = Menu::itemsForServiceDate( $current, (int) $location['id'], false, $scheduleId );
 
 				$live[ (int) $location['id'] ] = $found ? $found[0] : null;
 			}
@@ -326,17 +334,20 @@ $router->get(
 		echo View::render(
 			'admin/menu-builder',
 			array(
-				'title'     => 'Build menu',
-				'mode'      => $mode,
-				'month'     => $month,
-				'monthName' => $cursor->format( 'F Y' ),
-				'previous'  => $previous,
-				'next'      => $next,
-				'locations' => $locations,
-				'rows'      => $rows,
-				'live'      => $live,
-				'names'     => Menu::distinctNames(),
-				'today'     => Schedule::now()->format( 'Y-m-d' ),
+				'title'      => 'Build menu',
+				'mode'       => $mode,
+				'month'      => $month,
+				'monthName'  => $cursor->format( 'F Y' ),
+				'previous'   => $previous,
+				'next'       => $next,
+				'locations'  => $locations,
+				'rows'       => $rows,
+				'live'       => $live,
+				'names'      => Menu::distinctNames(),
+				'today'      => Schedule::now()->format( 'Y-m-d' ),
+				'schedules'  => Schedules::all(),
+				'scheduleId' => $scheduleId,
+				'rules'      => $rules,
 			)
 		);
 	}
@@ -348,12 +359,18 @@ $router->post(
 		$requireAdmin();
 		Csrf::verify();
 
-		$month = $post( 'month' );
+		$month      = $post( 'month' );
+		$scheduleId = (int) $post( 'schedule', (string) Schedules::DEFAULT_ID );
+
+		if ( ! Schedules::exists( $scheduleId ) ) {
+			$scheduleId = Schedules::DEFAULT_ID;
+		}
 
 		$tally = MenuBuilder::save(
 			(array) ( $_POST['dish'] ?? array() ),
 			(array) ( $_POST['from'] ?? array() ),
-			(array) ( $_POST['until'] ?? array() )
+			(array) ( $_POST['until'] ?? array() ),
+			$scheduleId
 		);
 
 		View::flash(
@@ -366,7 +383,10 @@ $router->post(
 			)
 		);
 
-		View::redirect( '/admin/menu/builder' . ( '' !== $month ? '?month=' . urlencode( $month ) : '' ) );
+		View::redirect(
+			'/admin/menu/builder?schedule=' . $scheduleId .
+			( '' !== $month ? '&month=' . urlencode( $month ) : '' )
+		);
 	}
 );
 
@@ -697,6 +717,84 @@ $router->get(
 	}
 );
 
+/* ---------------------------------------------------------------- Schedules */
+
+$router->get(
+	'/admin/schedules',
+	static function () use ( $requireAdmin ): void {
+		$requireAdmin();
+
+		$assigned = array();
+
+		foreach ( Schedules::named() as $id => $rules ) {
+			$assigned[ $id ] = array_map( 'intval', array_column( Schedules::locationsFor( $id ), 'id' ) );
+		}
+
+		echo View::render(
+			'admin/schedules',
+			array(
+				'title'     => 'Schedules',
+				'schedules' => Schedules::all(),
+				'locations' => Menu::locations(),
+				'assigned'  => $assigned,
+			)
+		);
+	}
+);
+
+$router->post(
+	'/admin/schedules/save',
+	static function () use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$id = (int) ( $_POST['id'] ?? 0 );
+
+		// The default schedule's rules live in settings, so this screen only ever
+		// writes named ones.
+		if ( Schedules::DEFAULT_ID === $id && '' === $post( 'name' ) ) {
+			View::flash( 'error', 'Give the schedule a name.' );
+			View::redirect( '/admin/schedules' );
+		}
+
+		$savedId = Schedules::save(
+			array(
+				'name'                     => $post( 'name' ),
+				'mode'                     => $post( 'mode' ),
+				'service_weekday'          => (int) ( $_POST['service_weekday'] ?? 0 ),
+				'open_days_before'         => (int) ( $_POST['open_days_before'] ?? 5 ),
+				'open_time'                => $post( 'open_time' ),
+				'close_days_before'        => (int) ( $_POST['close_days_before'] ?? 1 ),
+				'close_time'               => $post( 'close_time' ),
+				'close_weekday'            => (int) ( $_POST['close_weekday'] ?? 6 ),
+				'service_days_after_close' => (int) ( $_POST['service_days_after_close'] ?? 1 ),
+				'preview_upcoming'         => isset( $_POST['preview_upcoming'] ),
+				'show_on_front'            => isset( $_POST['show_on_front'] ),
+				'sort_order'               => (int) ( $_POST['sort_order'] ?? 0 ),
+			),
+			$id ?: null
+		);
+
+		Schedules::setLocations( $savedId, array_map( 'intval', (array) ( $_POST['locations'] ?? array() ) ) );
+
+		View::flash( 'success', 'Schedule saved.' );
+		View::redirect( '/admin/schedules' );
+	}
+);
+
+$router->post(
+	'/admin/schedules/{id}/delete',
+	static function ( string $id ) use ( $requireAdmin ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		Schedules::delete( (int) $id );
+
+		View::flash( 'success', 'Schedule removed. Its dishes now follow the default schedule.' );
+		View::redirect( '/admin/schedules' );
+	}
+);
+
 /* ----------------------------------------------------------------- Settings */
 
 $router->get(
@@ -746,6 +844,8 @@ $router->post(
 				'default_price'            => $post( 'default_price', '10.00' ),
 				'menu_heading'             => $post( 'menu_heading' ),
 				'menu_note'                => $post( 'menu_note' ),
+				'front_grid_columns'       => (string) max( 1, min( 6, (int) ( $_POST['front_grid_columns'] ?? 3 ) ) ),
+				'default_show_on_front'    => isset( $_POST['default_show_on_front'] ) ? 'yes' : 'no',
 			)
 		);
 

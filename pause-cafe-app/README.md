@@ -37,6 +37,30 @@ second line of defence in case the docroot is misconfigured.
 
 Back up by copying `data/pause-cafe.sqlite`. That one file is everything.
 
+## Schedules
+
+A schedule decides when its dishes can be ordered. Most sites need one; add more
+to run a second menu on its own rhythm.
+
+Each one sets its **mode** (planned ahead, on publish, or manual), the **day food
+is served**, when ordering **opens and closes**, the **closing time**, whether
+upcoming weeks **preview**, which **pickup locations** it serves, and whether it
+**shows on the front page**.
+
+**There is always a default schedule, and its rules live in Settings.** Named
+schedules are rows in their own table — one source of truth each, nothing
+written to both. A site that only ever wants one menu never has to open the
+Schedules screen.
+
+A dish with no schedule follows the default. Deleting a schedule detaches its
+dishes to the default rather than leaving them unresolvable, and a per-dish
+from/until still overrides whichever schedule a dish belongs to.
+
+The front page works out the current week **per schedule**, since two menus on
+different rhythms are not on the same one. How many dishes sit across the grid
+is an organiser setting, default 3, stepping down to two and then one on
+narrower screens.
+
 ## The three ordering modes
 
 One is active at a time, chosen in Settings. Whichever is active, a dish may
