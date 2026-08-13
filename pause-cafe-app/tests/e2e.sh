@@ -467,6 +467,23 @@ has "and the note on the meal" "$MAILLOG" "no onions"
 has "from the configured address" "$MAILLOG" "lunch@example.org"
 
 echo ""
+echo "Overview date picker"
+OVERVIEW=$(curl -s -b $A -c $A "$BASE/admin")
+has "the overview offers a date" "$OVERVIEW" 'name="date"'
+has "defaulting to the next serving" "$OVERVIEW" "Cook list for Sunday 16 August"
+has "which is marked as such" "$OVERVIEW" "next up"
+has "and shows what is owed on it" "$OVERVIEW" "Still to collect"
+
+LATER=$(curl -s -b $A -c $A "$BASE/admin?date=2026-08-23")
+has "a later date can be picked" "$LATER" "Cook list for Sunday 23 August"
+has "flagged as not the next one" "$LATER" "Not the next serving"
+has "with nothing ordered yet" "$LATER" "No orders for this date"
+
+# A date that is not on the menu must not be trusted into the query.
+BOGUS=$(curl -s -b $A -c $A "$BASE/admin?date=not-a-date")
+has "a bogus date falls back to the next serving" "$BOGUS" "Cook list for Sunday 16 August"
+
+echo ""
 echo "Access control"
 want "a member cannot reach the admin area" "$(code $M /admin)" "403"
 want "a signed-out visitor is redirected from the cart" "$(code /dev/null /cart)" "302"

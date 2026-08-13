@@ -8,6 +8,27 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.9.1 — 2026-08-13
+
+### Added
+
+- **The overview can show any serving date, not only the next one.** A picker
+  at the top of **Organiser** lists every date on the menu, newest first, with
+  the next serving marked. Choosing one reloads the cook list for that date.
+- **Still to collect** joins the stat row: what is owed on the chosen date by
+  people who have not paid.
+- A button under the cook list opens the full kitchen list already filtered to
+  the chosen date.
+
+### Notes
+
+- The chosen date lives in the URL (`/admin?date=2026-08-16`), so a particular
+  cook list can be bookmarked or sent to whoever is cooking.
+- A date that is not on the menu is ignored rather than queried, and the page
+  falls back to the next serving.
+- Picking a date other than the next serving marks the heading, so a printed
+  cook list cannot be mistaken for this week's.
+
 ## 0.9.0 — 2026-08-12
 
 ### Added
