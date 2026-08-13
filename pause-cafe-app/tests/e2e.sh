@@ -366,6 +366,17 @@ has "telling them the money is back" "$CANCELMAIL" "has gone back into your wall
 has "and what the balance is now" "$CANCELMAIL" "Your balance is now"
 
 echo ""
+echo "Front page layout"
+# The regression this guards: a grid per pickup location meant every card sat
+# alone in column one and nothing was ever side by side.
+HOME_HTML=$(curl -s "$BASE/")
+GRIDS=$(echo "$HOME_HTML" | grep -c '<ul class="dishes"')
+want "the whole week is a single grid" "$GRIDS" "1"
+has "holding the Marine dish" "$HOME_HTML" 'dish__where">Marine'
+has "and the RCC one" "$HOME_HTML" 'dish__where">RCC'
+has "with the column count on it" "$HOME_HTML" 'style="--cols: 3"'
+
+echo ""
 echo "Email actually sent"
 MAILLOG=$(cat data/mail.log 2>/dev/null)
 has "organisers were told about the sign-up" "$MAILLOG" "New sign-up: Sam Member"
