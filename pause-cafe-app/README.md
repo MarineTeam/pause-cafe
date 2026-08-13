@@ -153,6 +153,18 @@ Clearing a cell in the grid moves that dish to draft rather than deleting it, so
 anything ordered against it keeps its history. Days already served are
 read-only.
 
+## The overview
+
+`/admin` opens on the next serving date: how many meals, how much is still to
+collect, who is waiting for approval, how much sits in wallets, and the cook
+list broken down by pickup location.
+
+The **Serving** picker at the top switches it to any other date on the menu, so
+last week can be checked and a fortnight ahead can be seen without leaving the
+page. The date is in the URL (`/admin?date=2026-08-16`), so a particular cook
+list can be bookmarked or sent on. A date that is not the next serving is
+labelled as such, which keeps a printout from being mistaken for this week's.
+
 ## The kitchen list
 
 `/kitchen` is the page the cooks and servers actually use — every ordered meal

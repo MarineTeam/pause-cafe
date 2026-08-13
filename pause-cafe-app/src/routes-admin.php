@@ -34,20 +34,26 @@ use PauseCafe\Zeffy;
 
 $router->get(
 	'/admin',
-	static function () use ( $requireAdmin ): void {
+	static function () use ( $requireAdmin, $query ): void {
 		$requireAdmin();
 
-		$serviceDate = Menu::currentServiceDate();
+		$dates       = Menu::serviceDates();
+		$requested   = $query( 'date' );
+		$serviceDate = in_array( $requested, $dates, true )
+			? $requested
+			: ( Menu::currentServiceDate() ?? ( $dates ? (string) end( $dates ) : '' ) );
 
 		echo View::render(
 			'admin/dashboard',
 			array(
-				'title'        => 'Organiser',
-				'pending'      => Users::pendingCount(),
-				'serviceDate'  => $serviceDate,
-				'summary'      => $serviceDate ? Orders::summaryForServiceDate( $serviceDate ) : array(),
-				'outstanding'  => Wallet::totalOutstanding(),
-				'mode'         => Schedule::activeMode(),
+				'title'       => 'Organiser',
+				'pending'     => Users::pendingCount(),
+				'serviceDate' => $serviceDate,
+				'dates'       => $dates,
+				'summary'     => '' !== $serviceDate ? Orders::summaryForServiceDate( $serviceDate ) : array(),
+				'unpaid'      => '' !== $serviceDate ? Orders::unpaidForServiceDate( $serviceDate ) : array(),
+				'outstanding' => Wallet::totalOutstanding(),
+				'mode'        => Schedule::activeMode(),
 			)
 		);
 	}
