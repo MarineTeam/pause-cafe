@@ -8,6 +8,39 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.8.0 — 2026-08-12
+
+### Added
+
+- **Correcting a dish emails everyone who has already ordered it.** The message
+  names what it was, what it is now, what they ordered, and what they were
+  charged.
+- **Every correction notifies.** A dish fixed three times sends three emails —
+  the third correction matters as much as the first to whoever has to eat it.
+- Watched fields are the ones a customer would care about: name, description,
+  price and service date. Changing the portion limit, drafting a dish, or saving
+  with nothing altered tells nobody.
+- The organiser is told how many people were emailed, on both the per-dish
+  editor and the grid builder.
+
+### Changed
+
+- **Renaming a dish renames it on confirmed orders too.** Order lines are
+  otherwise a frozen receipt, and this is the deliberate exception: leaving them
+  meant the cook list showed the old name for anyone who ordered before the
+  correction and the new one for everyone after — two dishes as far as the
+  kitchen could tell, one pot in reality. **The price charged is never touched.**
+
+### Notes
+
+- A price change is announced but never re-charged. The email says outright that
+  nothing further will be taken, because that is the first thing anyone reading
+  it will want to know.
+- Cancelled orders are excluded, and keep whatever name they were placed under.
+- The hook lives in `Menu::save()` rather than in the routes. Both the editor
+  and the grid builder go through it, and a route that forgot to announce would
+  silently change somebody's lunch.
+
 ## 0.7.1 — 2026-08-12
 
 ### Fixed

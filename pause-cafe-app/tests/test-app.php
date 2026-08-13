@@ -25,6 +25,7 @@ use PauseCafe\Mail\Transport;
 use PauseCafe\Mailer;
 use PauseCafe\Menu;
 use PauseCafe\MenuBuilder;
+use PauseCafe\MenuChanges;
 use PauseCafe\Money;
 use PauseCafe\Notifications;
 use PauseCafe\Orders;
@@ -1173,5 +1174,152 @@ $orphaned = Menu::item( (int) $hotpot['id'] );
 check( 'its dish survives', $orphaned['name'], 'Wednesday hotpot' );
 check( 'detached to the default', null === $orphaned['schedule_id'], true );
 check( 'and still resolves a window', $orphaned['window']->source, Schedule::MODE_PLANNED );
+
+/* ------------------------------------------------------------------ */
+
+echo "\nCorrecting a dish tells whoever already ordered it\n";
+
+Settings::setMany(
+	array(
+		'active_mode'       => Schedule::MODE_PLANNED,
+		'service_weekday'   => '0',
+		'open_days_before'  => '5',
+		'open_time'         => '12:00',
+		'close_days_before' => '1',
+		'close_time'        => '13:00',
+	)
+);
+
+$sundays    = Schedule::serviceDatesInMonth( 2027, 2, 0 );
+$changeDate = $sundays[1];
+
+// The Wednesday before, so the window is open and orders can be placed.
+freeze( ( new DateTimeImmutable( $changeDate, Schedule::timezone() ) )->modify( '-4 days' )->format( 'Y-m-d' ) . ' 10:00' );
+
+$correctedId = Menu::save(
+	array(
+		'location_id'  => $marine,
+		'name'         => 'Chicken curry',
+		'description'  => 'Mild',
+		'price_cents'  => 1000,
+		'service_date' => $changeDate,
+		'status'       => 'published',
+	)
+);
+
+$eater = Users::create( 'eater@example.org', 'a-good-password', 'Eve Eater', '', Users::ROLE_MEMBER, true );
+$other = Users::create( 'other@example.org', 'a-good-password', 'Otto Other', '', Users::ROLE_MEMBER, true );
+
+Wallet::credit( $eater, 10000, Wallet::KIND_TOPUP, 'float' );
+Wallet::credit( $other, 10000, Wallet::KIND_TOPUP, 'float' );
+
+Orders::place( $eater, array( array( 'item_id' => $correctedId, 'qty' => 2, 'person_name' => 'Eve', 'group_name' => 'Seniors' ) ) );
+Orders::place( $other, array( array( 'item_id' => $correctedId, 'qty' => 1, 'person_name' => 'Otto' ) ) );
+
+check( 'two people are on the hook', count( MenuChanges::affected( $correctedId ) ), 2 );
+
+$current = Menu::item( $correctedId );
+
+unlink( $logPath );
+MenuChanges::forget();
+
+Menu::save( array_merge( $current, array( 'name' => 'Chicken korma' ) ), $correctedId );
+
+$log = (string) file_get_contents( $logPath );
+
+check( 'both are emailed', MenuChanges::totalNotified(), 2 );
+check( 'the first of them', false !== strpos( $log, 'eater@example.org' ), true );
+check( 'and the second', false !== strpos( $log, 'other@example.org' ), true );
+check( 'the mail says what it was', false !== strpos( $log, 'was: Chicken curry' ), true );
+check( 'and what it is now', false !== strpos( $log, 'now: Chicken korma' ), true );
+check( 'and repeats what they ordered', false !== strpos( $log, '2 x Eve (Seniors)' ), true );
+check( 'and what they were charged', false !== strpos( $log, 'You were charged ' . Money::format( 2000 ) ), true );
+
+echo "\nThe rename reaches the cook list, the price never does\n";
+
+$lines = Orders::lineItemsFiltered( array( 'from' => $changeDate, 'to' => $changeDate ) );
+
+// Otherwise the kitchen sees the old name for anyone who ordered before the
+// correction and the new one for everyone after -- two dishes, one pot.
+check( 'existing orders show the corrected name', array_unique( array_column( $lines, 'item_name' ) ), array( 'Chicken korma' ) );
+check( 'and the price they paid is untouched', (int) $lines[0]['unit_price_cents'], 1000 );
+
+echo "\nEvery correction notifies, not just the first\n";
+
+unlink( $logPath );
+MenuChanges::forget();
+
+Menu::save( array_merge( Menu::item( $correctedId ), array( 'name' => 'Chicken madras' ) ), $correctedId );
+
+check( 'a second correction mails them again', MenuChanges::totalNotified(), 2 );
+
+unlink( $logPath );
+MenuChanges::forget();
+
+Menu::save( array_merge( Menu::item( $correctedId ), array( 'name' => 'Chicken jalfrezi' ) ), $correctedId );
+
+check( 'and so does a third', MenuChanges::totalNotified(), 2 );
+check( 'the cook list keeps up', Orders::lineItemsFiltered( array( 'from' => $changeDate, 'to' => $changeDate ) )[0]['item_name'], 'Chicken jalfrezi' );
+
+echo "\nA price change is announced but never re-charged\n";
+
+$before = Wallet::balance( $eater );
+
+unlink( $logPath );
+MenuChanges::forget();
+
+Menu::save( array_merge( Menu::item( $correctedId ), array( 'price_cents' => 1400 ) ), $correctedId );
+
+$log = (string) file_get_contents( $logPath );
+
+check( 'they are told', MenuChanges::totalNotified(), 2 );
+check( 'with the old price', false !== strpos( $log, 'was: ' . Money::format( 1000 ) ), true );
+check( 'and the new one', false !== strpos( $log, 'now: ' . Money::format( 1400 ) ), true );
+check( 'reassured nothing more is taken', false !== strpos( $log, 'nothing further will be taken' ), true );
+check( 'and nothing is', Wallet::balance( $eater ), $before );
+
+echo "\nSilent changes stay silent\n";
+
+MenuChanges::forget();
+Menu::save( array_merge( Menu::item( $correctedId ), array( 'capacity' => 40 ) ), $correctedId );
+check( 'changing the portion limit tells nobody', MenuChanges::totalNotified(), 0 );
+
+MenuChanges::forget();
+Menu::save( array_merge( Menu::item( $correctedId ), array( 'status' => 'draft' ) ), $correctedId );
+check( 'nor does drafting it', MenuChanges::totalNotified(), 0 );
+
+MenuChanges::forget();
+Menu::save( array_merge( Menu::item( $correctedId ), array( 'status' => 'published' ) ), $correctedId );
+check( 'nor saving with nothing altered', MenuChanges::totalNotified(), 0 );
+
+$untouched = Menu::save(
+	array(
+		'location_id'  => $rcc,
+		'name'         => 'Nobody ordered this',
+		'price_cents'  => 900,
+		'service_date' => $changeDate,
+		'status'       => 'published',
+	)
+);
+
+MenuChanges::forget();
+Menu::save( array_merge( Menu::item( $untouched ), array( 'name' => 'Still nobody' ) ), $untouched );
+check( 'a dish with no orders tells nobody', MenuChanges::totalNotified(), 0 );
+
+echo "\nCancelled orders are left out of it\n";
+
+$cancelledBy = Users::create( 'gone@example.org', 'a-good-password', 'Gus Gone', '', Users::ROLE_MEMBER, true );
+Wallet::credit( $cancelledBy, 5000, Wallet::KIND_TOPUP, 'float' );
+
+$goneOrder = Orders::place( $cancelledBy, array( array( 'item_id' => $correctedId, 'qty' => 1 ) ) );
+Orders::cancel( $goneOrder, $adminId );
+
+check( 'they drop off the affected list', count( MenuChanges::affected( $correctedId ) ), 2 );
+
+MenuChanges::forget();
+Menu::save( array_merge( Menu::item( $correctedId ), array( 'name' => 'Chicken pasanda' ) ), $correctedId );
+
+check( 'so only the live orders are mailed', MenuChanges::totalNotified(), 2 );
+check( 'and their line keeps its own name', Orders::lines( $goneOrder )[0]['item_name'], 'Chicken jalfrezi' );
 
 finish();

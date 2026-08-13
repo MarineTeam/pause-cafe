@@ -341,6 +341,32 @@ has "the right one does" "$(curl -s -b $K -c $K "$BASE/kitchen?range=all")" "BBQ
 rm -f "$K"
 
 echo ""
+echo "Correcting a dish somebody already ordered"
+DISH_ID=$(curl -s -b $A -c $A "$BASE/admin/menu" | grep -o '/admin/menu/[0-9]*"><strong>BBQ pork on rice' | grep -o '[0-9]\+' | head -1)
+
+# Every field is posted, not just the name: the editor writes what it is given,
+# so omitting the override window would silently close the dish.
+T=$(tok $A "/admin/menu/$DISH_ID")
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
+  -d "_token=$T" -d "id=$DISH_ID" -d "name=BBQ pork with broccoli on rice" \
+  -d "location_id=1" -d "price=10.00" -d "capacity=2" -d "status=published" \
+  -d "service_date=2026-08-16" -d "open_from=2026-01-01T00:00" -d "close_at=2027-01-01T00:00"
+
+EDITED=$(curl -s -b $A -c $A "$BASE/admin/menu/$DISH_ID")
+has "the organiser is told somebody was emailed" "$EDITED" "already ordered this"
+
+CHANGEMAIL=$(cat data/mail.log 2>/dev/null)
+has "the customer gets the notice" "$CHANGEMAIL" "A dish you ordered has changed"
+has "naming what it was" "$CHANGEMAIL" "was: BBQ pork on rice"
+has "and what it is now" "$CHANGEMAIL" "now: BBQ pork with broccoli on rice"
+has "sent to whoever ordered it" "$CHANGEMAIL" "sam@example.org"
+
+# The kitchen must not end up with two names for one pot.
+KITCHEN=$(curl -s -b $A -c $A "$BASE/kitchen?range=all")
+has "the cook list carries the correction" "$KITCHEN" "BBQ pork with broccoli on rice"
+hasnt "and drops the old name" "$(flat "$KITCHEN")" "<strong>BBQ pork on rice</strong>"
+
+echo ""
 echo "Cancelling an order"
 # The first order on this date is the wallet one, so this exercises the refund
 # path rather than the cash one.

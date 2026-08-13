@@ -13,7 +13,7 @@ each run and never touching `data/`.
 
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
-php -d extension=php_pdo_sqlite tests/test-app.php        # 270 assertions
+php -d extension=php_pdo_sqlite tests/test-app.php        # 295 assertions
 ```
 
 **`test-schedule.php`** — window resolution. Each of the three modes on its own,
@@ -43,6 +43,11 @@ The grid builder is covered in all three modes: dates already served left
 untouched, a cleared cell drafted rather than deleted, a repeat inheriting its
 price, and saving an unchanged grid reporting no changes.
 
+Correcting a dish is covered end to end: both customers mailed, the rename
+reaching confirmed order lines while the price does not, a second and third
+correction each notifying again, and portion limits and drafting staying
+silent.
+
 Cancellation gets all three of its outcomes checked — refunded to the wallet,
 paid in cash, never charged — including that the two non-wallet cases write no
 ledger entry and the email does not claim one.
@@ -52,7 +57,7 @@ ledger entry and the email does not claim one.
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 112 assertions
+bash tests/e2e.sh                                          # 119 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token

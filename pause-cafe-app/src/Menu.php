@@ -303,6 +303,15 @@ class Menu {
 		$pdo = Database::pdo();
 
 		if ( $id ) {
+			/*
+			 * Taken before the write so anyone who has already ordered can be told
+			 * what changed. This lives here rather than in the callers because
+			 * every route that edits a dish -- the per-dish editor and the grid
+			 * builder -- comes through this method, and one that forgot to
+			 * announce would silently change somebody's lunch.
+			 */
+			$before = MenuChanges::snapshot( $id );
+
 			$sets = array();
 
 			foreach ( array_keys( $fields ) as $key ) {
@@ -311,6 +320,8 @@ class Menu {
 
 			$statement = $pdo->prepare( 'UPDATE menu_items SET ' . implode( ', ', $sets ) . ' WHERE id = :id' );
 			$statement->execute( array_merge( $fields, array( 'id' => $id ) ) );
+
+			MenuChanges::announce( $id, $before );
 
 			return $id;
 		}
