@@ -20,19 +20,26 @@ it, and brings its own accounts, wallet and checkout.
 
 | | menu | live-menu | flex-menu | app |
 | --- | --- | --- | --- | --- |
-| Ordering opens | Tue noon, from a service date | On publish | Either, per menu | Either, site-wide |
+| Ordering opens | Tue noon, from a service date | On publish | Either, per menu | Either, per menu |
 | Planning | A month at a time | None | Your choice | Your choice |
-| Menus at once | One | One | Many | One |
+| Menus at once | One | One | Many | Many |
 | Portion limits | — | — | Yes | Yes |
 | Blackout dates | — | — | Yes | Yes |
 | Per-location cutoffs | — | — | Yes | — |
+| Bulk entry | Month grid | Single row | Month grid | Month grid |
+| Accounts, wallet, checkout | WooCommerce | WooCommerce | WooCommerce | Built in |
 | Needs WordPress | Yes | Yes | Yes | **No** |
-| Lines | ~2,800 | ~3,100 | ~4,400 | ~5,500 |
+| Lines | ~3,000 | ~2,900 | ~4,700 | ~10,000 |
 
 **At 20–30 orders a week, start with the simplest one that covers what you
 need.** The app is the better-tested code and the cleaner system, but adopting
 it means migrating accounts and wallet balances — the one migration where a
 mistake means owing people money you cannot reconstruct.
+
+Worth noticing in that table: **`pause-cafe-flex-menu` is now only ahead of the
+app on per-location cutoffs.** It earns its place if you are staying on
+WordPress and need several menus; if you were going to leave WordPress anyway,
+the app does everything it does and brings its own accounts and payment.
 
 ## What they all do
 
@@ -46,8 +53,8 @@ mistake means owing people money you cannot reconstruct.
   than silently dropping the button
 - Group the kitchen report by the day food is served, not the day the order was
   placed, with print and CSV
-- Autocomplete dish names against past dishes, carrying the photo, description
-  and price across for a repeat
+- Autocomplete dish names against past dishes, so a repeat carries its
+  description and price across — and, in the plugins, its photo
 
 ## Tests
 

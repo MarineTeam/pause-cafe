@@ -63,9 +63,12 @@ narrower screens.
 
 ## The three ordering modes
 
-One is active at a time, chosen in Settings. Whichever is active, a dish may
-carry its own from/until, which overrides the mode, and a blackout date voids
-the window entirely.
+**Each schedule picks its own mode**, so a planned Sunday lunch and an
+on-publish midweek supper can run at the same time. The default schedule's mode
+is set in Settings; a named one sets its own.
+
+Whichever mode applies, a dish may carry its own from/until, which overrides it,
+and a blackout date voids the window entirely.
 
 | Mode | Ordering opens | Closes |
 | --- | --- | --- |
