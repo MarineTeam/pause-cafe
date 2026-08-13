@@ -70,6 +70,7 @@ $toInput = static function ( string $stored ): string {
 		<form method="post" action="/admin/menu/builder">
 			<?= Csrf::field() ?>
 			<input type="hidden" name="schedule" value="<?= (int) $scheduleId ?>">
+			<input type="hidden" name="notify_present" value="1">
 
 			<table class="widefat">
 				<thead>
@@ -89,6 +90,13 @@ $toInput = static function ( string $stored ): string {
 					<?php endforeach; ?>
 				</tbody>
 			</table>
+
+			<div class="field">
+				<label>
+					<input type="checkbox" name="notify_orders" value="1" checked>
+					Email anyone who has already ordered a dish I change here
+				</label>
+			</div>
 
 			<button type="submit">Publish menu and open ordering</button>
 		</form>
@@ -116,6 +124,7 @@ $toInput = static function ( string $stored ): string {
 		<form method="post" action="/admin/menu/builder">
 			<?= Csrf::field() ?>
 			<input type="hidden" name="schedule" value="<?= (int) $scheduleId ?>">
+			<input type="hidden" name="notify_present" value="1">
 			<input type="hidden" name="month" value="<?= e( $month ) ?>">
 
 			<div class="table-scroll">
@@ -202,6 +211,17 @@ $toInput = static function ( string $stored ): string {
 				A new dish takes its price and description from the last one with the
 				same name.
 			</p>
+
+			<div class="field">
+				<label>
+					<input type="checkbox" name="notify_orders" value="1" checked>
+					Email anyone who has already ordered a dish I change here
+				</label>
+				<p class="help">
+					Renaming a dish updates existing orders either way, so the kitchen
+					list stays consistent. This only controls whether they hear about it.
+				</p>
+			</div>
 
 			<button type="submit">Save month</button>
 		</form>

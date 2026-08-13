@@ -225,6 +225,11 @@ notice; a dish fixed three times sends three.
 Only changes a customer would care about count: name, description, price and
 service date. Portion limits, drafting and no-op saves say nothing.
 
+**A notify checkbox** lets you skip the email for a correction nobody would
+notice. It shows on the per-dish editor only when the dish has orders, and on
+the grid builder for the whole save, and is ticked by default. It silences the
+email and nothing else — the rename below still happens.
+
 **Renaming a dish renames it on confirmed orders too.** Order lines are
 otherwise a frozen receipt, and this is the deliberate exception — leaving them
 alone meant the cook list showed the old name for anyone who ordered before the
