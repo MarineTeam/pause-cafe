@@ -104,6 +104,13 @@ $mode     = $settings['active_mode'];
 		</div>
 
 		<div class="field">
+			<label><input type="checkbox" name="default_show_on_front" value="1"
+				<?= 'no' !== $settings['default_show_on_front'] ? 'checked' : '' ?>>
+				Show this menu on the front page</label>
+			<p class="help">Applies to the default schedule. Named schedules have their own switch.</p>
+		</div>
+
+		<div class="field">
 			<label><input type="checkbox" name="allow_registration" value="1"
 				<?= 'yes' === $settings['allow_registration'] ? 'checked' : '' ?>> Let people sign up themselves (still needs approval)</label>
 		</div>
@@ -149,6 +156,13 @@ $mode     = $settings['active_mode'];
 		<div class="field">
 			<label for="menu_note">Footer note</label>
 			<input type="text" id="menu_note" name="menu_note" value="<?= e( $settings['menu_note'] ) ?>">
+		</div>
+
+		<div class="field" style="max-width:220px">
+			<label for="front_grid_columns">Dishes across on the front page</label>
+			<input type="number" id="front_grid_columns" name="front_grid_columns" min="1" max="6"
+				value="<?= e( $settings['front_grid_columns'] ) ?>">
+			<p class="help">Steps down to two, then one, on narrower screens.</p>
 		</div>
 	</div>
 

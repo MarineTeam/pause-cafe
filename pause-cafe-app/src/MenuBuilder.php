@@ -26,7 +26,8 @@ class MenuBuilder {
 		int $locationId,
 		string $name,
 		array $extra = array(),
-		?string $forceLookup = null
+		?string $forceLookup = null,
+		$scheduleId = Schedules::DEFAULT_ID
 	): string {
 		if ( ! $locationId ) {
 			return '';
@@ -34,7 +35,7 @@ class MenuBuilder {
 
 		$name     = trim( $name );
 		$lookup   = '' !== $serviceDate ? $serviceDate : (string) $forceLookup;
-		$existing = '' !== $lookup ? Menu::itemBySlot( $lookup, $locationId ) : null;
+		$existing = '' !== $lookup ? Menu::itemBySlot( $lookup, $locationId, $scheduleId ) : null;
 
 		if ( '' === $name ) {
 			/*
@@ -82,6 +83,7 @@ class MenuBuilder {
 					'service_date' => $serviceDate,
 					'capacity'     => 0,
 					'status'       => 'published',
+					'schedule_id'  => (int) $scheduleId,
 				),
 				$extra
 			)
@@ -118,8 +120,9 @@ class MenuBuilder {
 	 *
 	 * @return array{created:int,updated:int,drafted:int}
 	 */
-	public static function save( array $dishes, array $froms = array(), array $untils = array() ): array {
-		$mode  = Schedule::activeMode();
+	public static function save( array $dishes, array $froms = array(), array $untils = array(), $scheduleId = Schedules::DEFAULT_ID ): array {
+		$rules = Schedules::rulesFor( $scheduleId );
+		$mode  = (string) $rules['mode'];
 		$today = Schedule::now()->format( 'Y-m-d' );
 		$tally = array(
 			'created' => 0,
@@ -135,10 +138,19 @@ class MenuBuilder {
 
 		if ( Schedule::MODE_ON_PUBLISH === $mode ) {
 			$now     = Schedule::now()->format( 'Y-m-d H:i:s' );
-			$current = Menu::currentServiceDate();
+			$current = Menu::currentServiceDate( $scheduleId );
 
 			foreach ( $dishes as $locationId => $name ) {
-				$count( self::saveSlot( '', (int) $locationId, (string) $name, array( 'opened_at' => $now ), $current ) );
+				$count(
+					self::saveSlot(
+						'',
+						(int) $locationId,
+						(string) $name,
+						array( 'opened_at' => $now ),
+						$current,
+						$scheduleId
+					)
+				);
 			}
 
 			return $tally;
@@ -160,7 +172,7 @@ class MenuBuilder {
 			}
 
 			foreach ( (array) $slots as $locationId => $name ) {
-				$count( self::saveSlot( $serviceDate, (int) $locationId, (string) $name, $extra ) );
+				$count( self::saveSlot( $serviceDate, (int) $locationId, (string) $name, $extra, null, $scheduleId ) );
 			}
 		}
 

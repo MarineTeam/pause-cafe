@@ -33,6 +33,28 @@ $toInput = static function ( string $stored ): string {
 	same dishes.
 </p>
 
+<?php if ( count( $schedules ) > 1 ) : ?>
+	<form method="get" action="/admin/menu/builder" class="field-row no-print" style="max-width:520px">
+		<div>
+			<label for="schedule">Schedule</label>
+			<select id="schedule" name="schedule" onchange="this.form.submit()">
+				<?php foreach ( $schedules as $id => $option ) : ?>
+					<option value="<?= (int) $id ?>" <?= (int) $id === (int) $scheduleId ? 'selected' : '' ?>>
+						<?= e( $option['name'] ) ?>
+					</option>
+				<?php endforeach; ?>
+			</select>
+		</div>
+		<input type="hidden" name="month" value="<?= e( $month ) ?>">
+	</form>
+<?php endif; ?>
+
+<p class="muted">
+	<strong><?= e( $rules['name'] ) ?></strong> —
+	<?= e( Schedule::modes()[ $mode ] ?? $mode ) ?>.
+	<a href="/admin/schedules">Change its rules</a>.
+</p>
+
 <?= $datalist( $names ) ?>
 
 <?php if ( Schedule::MODE_ON_PUBLISH === $mode ) : ?>
@@ -47,6 +69,7 @@ $toInput = static function ( string $stored ): string {
 
 		<form method="post" action="/admin/menu/builder">
 			<?= Csrf::field() ?>
+			<input type="hidden" name="schedule" value="<?= (int) $scheduleId ?>">
 
 			<table class="widefat">
 				<thead>
@@ -76,8 +99,8 @@ $toInput = static function ( string $stored ): string {
 	<div class="kitchen-head">
 		<h2><?= e( $monthName ) ?></h2>
 		<div class="no-print">
-			<a class="button button--quiet" href="/admin/menu/builder?month=<?= e( $previous ) ?>">&laquo; Previous</a>
-			<a class="button button--quiet" href="/admin/menu/builder?month=<?= e( $next ) ?>">Next &raquo;</a>
+			<a class="button button--quiet" href="/admin/menu/builder?schedule=<?= (int) $scheduleId ?>&amp;month=<?= e( $previous ) ?>">&laquo; Previous</a>
+			<a class="button button--quiet" href="/admin/menu/builder?schedule=<?= (int) $scheduleId ?>&amp;month=<?= e( $next ) ?>">Next &raquo;</a>
 		</div>
 	</div>
 
@@ -92,6 +115,7 @@ $toInput = static function ( string $stored ): string {
 
 		<form method="post" action="/admin/menu/builder">
 			<?= Csrf::field() ?>
+			<input type="hidden" name="schedule" value="<?= (int) $scheduleId ?>">
 			<input type="hidden" name="month" value="<?= e( $month ) ?>">
 
 			<div class="table-scroll">
