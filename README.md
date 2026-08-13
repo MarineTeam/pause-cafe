@@ -63,13 +63,13 @@ php pause-cafe-menu/tests/test-schedule.php               # 23
 php pause-cafe-live-menu/tests/test-schedule.php          # 37
 php pause-cafe-flex-menu/tests/test-window.php            # 74
 php -d extension=php_pdo_sqlite pause-cafe-app/tests/test-schedule.php   # 51
-php -d extension=php_pdo_sqlite pause-cafe-app/tests/test-app.php        # 270
+php -d extension=php_pdo_sqlite pause-cafe-app/tests/test-app.php        # 295
 ```
 
-Plus 112 assertions over real HTTP for the app — see
+Plus 119 assertions over real HTTP for the app — see
 [its tests README](pause-cafe-app/tests/README.md).
 
-567 assertions in total. **Scope of that number matters:** the rules engines are
+599 assertions in total. **Scope of that number matters:** the rules engines are
 well covered everywhere, and the app additionally has its model and HTTP layers
 covered. The plugins' admin screens and WooCommerce filter integration are
 **not** tested — they have never run inside WordPress. Install on staging first.

@@ -16,6 +16,7 @@ use PauseCafe\Kitchen;
 use PauseCafe\Mailer;
 use PauseCafe\Menu;
 use PauseCafe\MenuBuilder;
+use PauseCafe\MenuChanges;
 use PauseCafe\Money;
 use PauseCafe\Notifications;
 use PauseCafe\Orders;
@@ -366,6 +367,8 @@ $router->post(
 			$scheduleId = Schedules::DEFAULT_ID;
 		}
 
+		MenuChanges::forget();
+
 		$tally = MenuBuilder::save(
 			(array) ( $_POST['dish'] ?? array() ),
 			(array) ( $_POST['from'] ?? array() ),
@@ -373,13 +376,18 @@ $router->post(
 			$scheduleId
 		);
 
+		$notified = MenuChanges::totalNotified();
+
 		View::flash(
 			'success',
 			sprintf(
-				'Menu saved. %d added, %d updated, %d moved to draft.',
+				'Menu saved. %d added, %d updated, %d moved to draft.%s',
 				$tally['created'],
 				$tally['updated'],
-				$tally['drafted']
+				$tally['drafted'],
+				$notified > 0
+					? sprintf( ' %d %s already ordered a changed dish and been emailed.', $notified, 1 === $notified ? 'person has' : 'people have' )
+					: ''
 			)
 		);
 
@@ -455,9 +463,23 @@ $router->post(
 			$data['opened_at'] = Schedule::now()->format( 'Y-m-d H:i:s' );
 		}
 
-		$savedId = Menu::save( $data, $id ?: null );
+		MenuChanges::forget();
 
-		View::flash( 'success', 'Saved.' );
+		$savedId  = Menu::save( $data, $id ?: null );
+		$notified = MenuChanges::totalNotified();
+
+		View::flash(
+			'success',
+			$notified > 0
+				? sprintf(
+					'Saved. %d %s already ordered this and %s been emailed about the change.',
+					$notified,
+					1 === $notified ? 'person had' : 'people had',
+					1 === $notified ? 'has' : 'have'
+				)
+				: 'Saved.'
+		);
+
 		View::redirect( '/admin/menu/' . $savedId );
 	}
 );

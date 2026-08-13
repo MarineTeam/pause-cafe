@@ -26,6 +26,7 @@ in `public/index.php` and `routes-admin.php`; rendering lives in `views/`.
 | `Settings.php` | Key/value store, cached per request. `active_mode` chooses the schedule mode. |
 | `Menu.php` | Dishes and pickup locations. Every read comes back with its `Window` attached. |
 | `MenuBuilder.php` | The grid way of entering a menu. Alongside the per-dish editor, not instead of it. |
+| `MenuChanges.php` | Who to tell when a dish they already ordered is corrected, and what to update. |
 | `Cart.php` | The session cart. Lines are a list, not keyed by dish — the same dish for two people is two lines. |
 | `Orders.php` | Placing, cancelling and reporting. Owns the transaction that ties an order to its wallet debit. |
 | `Wallet.php` | The append-only ledger. |
@@ -76,6 +77,11 @@ front with `BEGIN IMMEDIATE`, which PDO cannot issue through
 transaction, so `commit()` and `rollBack()` would throw — hence the private
 `begin`/`commit`/`rollback` trio, which must be used as a set. `Wallet::post()`
 takes `$ownTransaction = false` when called from inside it.
+
+**Order lines are a frozen receipt, with exactly one exception.** Correcting a
+dish's name rewrites it on confirmed lines, because otherwise the cook list
+carries two names for one pot. The price charged is never rewritten, and
+`MenuChanges` is the only thing allowed to touch a line after checkout.
 
 **Sending email must never break the thing that triggered it.** `Notifications`
 returns a failed `Result` rather than throwing; an order that already took

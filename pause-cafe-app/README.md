@@ -199,9 +199,10 @@ folder beats one silently dropped because an API key expired. Both failures are
 logged, and **Send a test to myself** in Settings names the transport that
 actually carried it.
 
-Four emails go out, all plain text: an order confirmation listing every meal
-with its name, group and note; a cancellation notice; a message when an account
-is approved; and a heads-up to organisers when somebody signs up.
+Five emails go out, all plain text: an order confirmation listing every meal
+with its name, group and note; a cancellation notice; a notice when a dish
+somebody already ordered is corrected; a message when an account is approved;
+and a heads-up to organisers when somebody signs up.
 
 The cancellation notice says what became of the money, and says it three
 different ways depending on what actually happened — refunded to the wallet
@@ -213,6 +214,23 @@ show.
 Adding another: implement `PauseCafe\Mail\Transport` and call
 `Mailer::register()`. It declares its own configuration fields, so the settings
 screen renders a form for it without changing.
+
+## Correcting a dish after people have ordered
+
+Dishes get fixed — a typo, the wrong name, a price. By then somebody has usually
+ordered, so **everyone who has is emailed**, with what it was, what it is now,
+what they ordered and what they were charged. Every correction sends a fresh
+notice; a dish fixed three times sends three.
+
+Only changes a customer would care about count: name, description, price and
+service date. Portion limits, drafting and no-op saves say nothing.
+
+**Renaming a dish renames it on confirmed orders too.** Order lines are
+otherwise a frozen receipt, and this is the deliberate exception — leaving them
+alone meant the cook list showed the old name for anyone who ordered before the
+correction and the new one for everyone after, which is two dishes as far as the
+kitchen can tell. **The price charged is never touched**, and the email says so
+outright when the price is what changed.
 
 ## Wallet
 

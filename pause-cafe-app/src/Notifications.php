@@ -158,6 +158,98 @@ class Notifications {
 	}
 
 	/**
+	 * Tells someone a dish they have already ordered has been changed.
+	 *
+	 * @param array $person  From MenuChanges::affected() — user plus their lines.
+	 * @param array $changes field => from/to.
+	 */
+	public static function orderedDishChanged( array $person, ?array $item, array $changes ): Result {
+		$user  = $person['user'];
+		$lines = $person['lines'];
+		$when  = $lines ? (string) $lines[0]['service_date'] : '';
+
+		$body   = array();
+		$body[] = 'Hello ' . $user['name'] . ',';
+		$body[] = '';
+		$body[] = 'A dish you have already ordered' .
+			( '' !== $when ? ' for ' . Schedule::formatDate( $when, 'l j F' ) : '' ) .
+			' has been changed by the organisers.';
+		$body[] = '';
+
+		foreach ( $changes as $field => $change ) {
+			$body[] = '  ' . ( MenuChanges::watched()[ $field ] ?? $field );
+			$body[] = '    was: ' . self::describeValue( $field, $change['from'] );
+			$body[] = '    now: ' . self::describeValue( $field, $change['to'] );
+			$body[] = '';
+		}
+
+		$body[] = 'What you ordered is unchanged:';
+
+		$charged = 0;
+
+		foreach ( $lines as $line ) {
+			$who = '' !== $line['person_name'] ? $line['person_name'] : $user['name'];
+
+			if ( '' !== $line['group_name'] ) {
+				$who .= ' (' . $line['group_name'] . ')';
+			}
+
+			$body[]   = '  ' . (int) $line['qty'] . ' x ' . $who;
+			$charged += (int) $line['qty'] * (int) $line['unit_price_cents'];
+		}
+
+		$body[] = '';
+
+		if ( isset( $changes['price_cents'] ) ) {
+			// The price on an order is frozen at checkout, so a later change
+			// cannot reach back and take more.
+			$body[] = 'The price has changed, but you were charged ' . Money::format( $charged ) .
+				' and nothing further will be taken.';
+		} else {
+			$body[] = 'You were charged ' . Money::format( $charged ) . '.';
+		}
+
+		$body[] = '';
+		$body[] = 'If this does not work for you, speak to an organiser before ordering closes.';
+
+		$url = self::baseUrl();
+
+		if ( '' !== $url && $lines ) {
+			$body[] = '';
+			$body[] = 'Your order: ' . $url . '/orders/' . (int) $lines[0]['order_id'];
+		}
+
+		$body[] = '';
+		$body[] = self::siteName();
+
+		$name = $item ? (string) $item['name'] : ( $changes['name']['to'] ?? 'your order' );
+
+		return Mailer::send(
+			Message::make(
+				(string) $user['email'],
+				(string) $user['name'],
+				'A dish you ordered has changed: ' . $name,
+				implode( "\n", $body )
+			)
+		);
+	}
+
+	/**
+	 * Renders a raw column value the way a customer would expect to read it.
+	 */
+	private static function describeValue( string $field, string $value ): string {
+		if ( 'price_cents' === $field ) {
+			return Money::format( (int) $value );
+		}
+
+		if ( 'service_date' === $field ) {
+			return '' !== $value ? Schedule::formatDate( $value, 'l j F Y' ) : 'not set';
+		}
+
+		return '' !== $value ? $value : '(blank)';
+	}
+
+	/**
 	 * Tells someone they can now order.
 	 */
 	public static function accountApproved( int $userId ): Result {
