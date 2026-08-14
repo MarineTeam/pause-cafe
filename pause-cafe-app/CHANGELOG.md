@@ -8,6 +8,31 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.12.1 — 2026-08-14
+
+### Fixed
+
+- **Unpublishing a dish did not stick if you then edited that month's menu.**
+  Saving the grid forces every named cell to published — deliberately, because
+  typing a name back into a cell you cleared is how you put a dish back. But the
+  builder was also putting an unpublished dish's name *into* the box, so the
+  form resubmitted it on every save and the builder could not tell "somebody
+  typed this" from "the form carried it". Editing any other week of the same
+  month quietly put every unpublished dish back on the menu.
+
+  An unpublished dish now shows as a placeholder — `Roast chicken
+  (unpublished)` — with a matching pill, so it is still visible but is not
+  submitted. Its cell arrives empty, the existing "already a draft, nothing to
+  do" path leaves it alone, and typing the name in still republishes it.
+
+### Notes
+
+- The two halves are only correct together, so both are tested: a unit test that
+  an empty cell leaves a draft alone, and an end-to-end assertion that the grid
+  renders a placeholder rather than a value. `MenuBuilder::unchanged()` now
+  carries a comment saying its status check is safe *only* because of how the
+  grid renders — putting the name back in the box brings the bug straight back.
+
 ## 0.12.0 — 2026-08-14
 
 Two security fixes from an audit of the whole app, plus one thing to set when

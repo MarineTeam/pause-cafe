@@ -93,6 +93,17 @@ class MenuBuilder {
 	}
 
 	private static function unchanged( array $existing, string $name, array $extra ): bool {
+		/*
+		 * A drafted dish never counts as unchanged, so submitting its name
+		 * republishes it. That is deliberate — typing a name back into a cell
+		 * you cleared is how you put it back — and it is safe only because the
+		 * builder does not put an unpublished dish's name in the box in the
+		 * first place. It shows it as a placeholder instead, which is visible
+		 * but not submitted.
+		 *
+		 * If that ever changes, this line silently republishes every drafted
+		 * dish in the month the next time anybody saves the grid.
+		 */
 		if ( $existing['name'] !== $name || 'published' !== $existing['status'] ) {
 			return false;
 		}

@@ -134,6 +134,26 @@ curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/builder" \
 
 has "a cleared dish becomes a draft" "$(curl -s -b $A -c $A "$BASE/admin/menu")" "Draft"
 
+# An unpublished dish must not be submitted back by the grid. Saving the month
+# forces every named cell to published, so if the builder put the name in the
+# box, editing any other week would quietly put it back on the menu.
+BUILDER=$(curl -s -b $A -c $A "$BASE/admin/menu/builder?month=2026-08")
+hasnt "an unpublished dish is not in its box" "$(flat "$BUILDER")" 'name="dish\[2026-08-23\]\[2\]" value="Chicken katsu"'
+has "it is shown as a placeholder instead" "$(flat "$BUILDER")" 'Chicken katsu (unpublished)'
+has "and marked as such" "$BUILDER" "Unpublished"
+
+# Save the month again, editing a different week entirely.
+T=$(tok $A "/admin/menu/builder?month=2026-08")
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/builder" \
+  -d "_token=$T" -d "month=2026-08" \
+  -d "dish[2026-08-23][1]=Lentil shepherd pie" \
+  -d "dish[2026-08-23][2]=" \
+  -d "dish[2026-08-30][1]=Lentil cottage pie"
+
+hasnt "and it is still not on the public menu" "$(curl -s "$BASE/")" "Chicken katsu"
+has "while the week that was edited did change" \
+  "$(curl -s -b $A -c $A "$BASE/admin/menu")" "Lentil cottage pie"
+
 echo ""
 echo "Schedules"
 SCHED=$(curl -s -b $A -c $A "$BASE/admin/schedules")
