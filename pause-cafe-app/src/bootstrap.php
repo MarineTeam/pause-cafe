@@ -6,7 +6,7 @@
 declare(strict_types=1);
 
 // Kept in step with CHANGELOG.md.
-defined( 'PAUSE_CAFE_VERSION' ) || define( 'PAUSE_CAFE_VERSION', '0.11.1' );
+defined( 'PAUSE_CAFE_VERSION' ) || define( 'PAUSE_CAFE_VERSION', '0.12.0' );
 
 spl_autoload_register(
 	static function ( string $class ): void {
@@ -31,6 +31,7 @@ use PauseCafe\Images;
 use PauseCafe\Mail\LogTransport;
 use PauseCafe\Mailer;
 use PauseCafe\Money;
+use PauseCafe\Notifications;
 use PauseCafe\Payments;
 use PauseCafe\Schedule;
 use PauseCafe\SignIn;
@@ -55,6 +56,10 @@ date_default_timezone_set( $config['timezone'] ?? 'UTC' );
 Database::configure( $config['database'] );
 Schedule::configure( $config['timezone'] ?? 'UTC' );
 Money::configure( $config['currency'] ?? '$' );
+Notifications::configure(
+	(string) ( $config['site_url'] ?? '' ),
+	(bool) ( $config['https'] ?? false )
+);
 Themes::configure( $root . '/themes' );
 Images::configure( $root . '/public/assets/uploads', '/assets/uploads' );
 Zeffy::configure(

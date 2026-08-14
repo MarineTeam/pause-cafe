@@ -31,6 +31,23 @@ $routes = SignIn::organiserRoutes();
 	</div>
 <?php endif; ?>
 
+<?php
+/*
+ * Emailed links carry a one-time token in a URL the server builds. Without a
+ * pinned address that URL comes from the request's Host header, so somebody
+ * can ask for a link while claiming to be a different host and have the token
+ * emailed pointing at theirs. Only worth saying when links are actually on.
+ */
+?>
+<?php if ( SignIn::isAvailable( 'magic' ) && ! \PauseCafe\Notifications::urlIsPinned() ) : ?>
+	<div class="flash flash--error">
+		<strong>Set <code>site_url</code> in <code>config.php</code>.</strong>
+		Sign-in links are switched on, and without it the address in those emails
+		is taken from whatever the browser asked for — which means a link carrying
+		a working sign-in token can be made to point somewhere else.
+	</div>
+<?php endif; ?>
+
 <form method="post" action="/admin/signin">
 	<?= Csrf::field() ?>
 

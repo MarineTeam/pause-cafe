@@ -476,6 +476,16 @@ It expects an empty database, since it drives first-run setup itself.
 - All SQL goes through prepared statements.
 - Set `'https' => true` in `config.php` once you are behind TLS; that marks the
   session cookie secure.
+- **Set `'site_url'` to the site's own address.** Every link the app emails is
+  built from it. Left blank, the address comes from the request's `Host` header
+  instead — which the caller chooses, so a sign-in link carrying a one-time
+  token can be made to point somewhere else. The Sign-in screen warns if
+  emailed links are on without it.
+- Password sign-in is rate limited: five wrong guesses against one address, or
+  forty from one machine, means a fifteen-minute wait. Both expire on their own,
+  a successful sign-in clears them, and `php tools/rescue.php` clears the lot.
+  The wait is applied to the address as typed, so it cannot be used to find out
+  who has an account.
 - Sign-in links are stored as a SHA-256 of the token, never the token. A leaked
   copy of that table cannot be pasted into a URL. They are single use and
   short-lived, and signing out kills any still outstanding.

@@ -746,6 +746,46 @@ curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/signin" \
   -d "signin_magic_minutes=15" -d "signin_admin_rescue=1" -d "signin_external_create=1"
 
 echo ""
+echo "Guessing passwords over HTTP"
+# Six wrong guesses at the organiser account from one browser. The sixth must
+# be refused before the password is even checked.
+G=$(mktemp)
+for i in 1 2 3 4 5; do
+  curl -s -o /dev/null -b $G -c $G -X POST "$BASE/login" \
+    -d "_token=$(tok $G /login)" -d "method=password" \
+    -d "email=ada@example.org" -d "password=wrong-$i"
+done
+
+LOCKED=$(curl -s -b $G -c $G -L -X POST "$BASE/login" \
+  -d "_token=$(tok $G /login)" -d "method=password" \
+  -d "email=ada@example.org" -d "password=wrong-6")
+has "the sixth wrong guess is refused" "$LOCKED" "Too many sign-in attempts"
+
+# And the lock holds even when the password is finally right, which is the
+# whole point -- otherwise guessing until you land is still free.
+RIGHT=$(curl -s -b $G -c $G -L -X POST "$BASE/login" \
+  -d "_token=$(tok $G /login)" -d "method=password" \
+  -d "email=ada@example.org" -d "password=correct-horse")
+has "and so is the right password while locked" "$RIGHT" "Too many sign-in attempts"
+want "so nobody is signed in" "$(code $G /admin)" "302"
+
+# A different account from the same browser still works: the tight limit is
+# per address, so one person being guessed at cannot lock out the rest.
+O=$(mktemp)
+want "another account is unaffected" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -b $O -c $O -X POST "$BASE/login" \
+    -d "_token=$(tok $O /login)" -d "method=password" \
+    -d "email=sam@example.org" -d "password=battery-staple")" "302"
+want "and really is signed in" "$(code $O /account)" "200"
+
+# Clear it so later sections can still sign in as the organiser.
+php -d extension=php_pdo_sqlite -r 'require "src/bootstrap.php"; PauseCafe\LoginAttempts::clearAll();' > /dev/null 2>&1
+want "the rescue tool unlocks it again" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -b $G -c $G -X POST "$BASE/login" \
+    -d "_token=$(tok $G /login)" -d "method=password" \
+    -d "email=ada@example.org" -d "password=correct-horse")" "302"
+
+echo ""
 echo "Access control"
 want "a member cannot reach the admin area" "$(code $M /admin)" "403"
 want "a signed-out visitor is redirected from the cart" "$(code /dev/null /cart)" "302"

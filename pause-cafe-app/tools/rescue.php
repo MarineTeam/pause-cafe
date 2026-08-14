@@ -27,6 +27,7 @@ if ( 'cli' !== PHP_SAPI ) {
 require dirname( __DIR__ ) . '/src/bootstrap.php';
 
 use PauseCafe\Identities;
+use PauseCafe\LoginAttempts;
 use PauseCafe\Settings;
 use PauseCafe\SignIn;
 use PauseCafe\Users;
@@ -74,6 +75,17 @@ Settings::setMany(
 );
 
 echo "Password sign-in is back on, and so is the organiser password route.\n";
+
+/*
+ * And any lockout, since being locked out is one of the reasons somebody runs
+ * this. The throttle expires by itself in a quarter of an hour, but a person
+ * who has resorted to SSH does not want to be told to wait.
+ */
+$cleared = LoginAttempts::clearAll();
+
+if ( $cleared > 0 ) {
+	echo 'Cleared ' . $cleared . " recent failed sign-in attempt(s), so nothing is locked.\n";
+}
 
 if ( '--reset' === $command ) {
 	$email = $arguments[1] ?? '';

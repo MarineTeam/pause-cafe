@@ -315,6 +315,25 @@ class Database {
 		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_token_user ON login_tokens (user_id, created_at)' );
 
 		/*
+		 * Wrong password guesses, so they can be slowed down.
+		 *
+		 * Only failures are written, and only for long enough to matter -- rows
+		 * older than the window are deleted, so this never becomes a record of
+		 * who tried to sign in and when.
+		 */
+		$pdo->exec(
+			"CREATE TABLE IF NOT EXISTS login_attempts (
+				id         INTEGER PRIMARY KEY AUTOINCREMENT,
+				email      TEXT NOT NULL DEFAULT '',
+				ip         TEXT NOT NULL DEFAULT '',
+				created_at TEXT NOT NULL
+			)"
+		);
+
+		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_attempt_email ON login_attempts (email, created_at)' );
+		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_attempt_ip ON login_attempts (ip, created_at)' );
+
+		/*
 		 * Added after the first release, so they arrive by ALTER rather than in
 		 * the CREATE above -- an existing install would never see a changed
 		 * CREATE TABLE IF NOT EXISTS.
