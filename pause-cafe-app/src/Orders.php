@@ -11,6 +11,10 @@ namespace PauseCafe;
  */
 class Orders {
 
+	/** The two states an order can be in. Cancelled rows are kept, never deleted. */
+	public const STATUS_CONFIRMED = 'confirmed';
+	public const STATUS_CANCELLED = 'cancelled';
+
 	/*
 	 * SQLite only takes a write lock up front with BEGIN IMMEDIATE, which PDO
 	 * cannot issue through beginTransaction(). Driving it with exec() means PDO
@@ -331,16 +335,82 @@ class Orders {
 	/**
 	 * @return array[]
 	 */
-	public static function forServiceDate( string $serviceDate ): array {
+	/**
+	 * Every date somebody has ordered for.
+	 *
+	 * Kept separate from Menu::serviceDates(), which answers a different
+	 * question -- what is on the menu -- and answers it from published dishes
+	 * only. An organiser needs both, and needs this one especially: deleting a
+	 * dish that has been sold drafts it instead, which is what preserves the
+	 * orders, and until this existed that was also what hid them. The date fell
+	 * out of every picker and the orders became unreachable, money and all.
+	 *
+	 * Cancelled orders count. Their date has to stay reachable or there is no
+	 * way to look at what was refunded.
+	 *
+	 * @return string[] Ascending.
+	 */
+	public static function serviceDates(): array {
+		$rows = Database::pdo()->query(
+			"SELECT DISTINCT service_date FROM orders
+			 WHERE service_date != '' ORDER BY service_date ASC"
+		)->fetchAll();
+
+		return array_map( static fn( array $row ): string => (string) $row['service_date'], $rows );
+	}
+
+	/**
+	 * Dishes ordered on a date that are no longer published.
+	 *
+	 * Deleting a dish that has been sold drafts it instead, so this is the
+	 * normal end state for a dish an organiser tried to remove — and without
+	 * saying so, the orders page shows orders for a dish that cannot be found
+	 * anywhere on the menu.
+	 *
+	 * Matched on the name recorded against the line, because that is what a
+	 * cook and an organiser both recognise, and because a line whose dish row
+	 * was hard-deleted has nothing else left to match on.
+	 *
+	 * @return string[] Dish names.
+	 */
+	public static function retiredDishes( string $serviceDate ): array {
 		$statement = Database::pdo()->prepare(
-			"SELECT o.*, u.name AS user_name, u.email AS user_email, u.group_name AS user_group
-			 FROM orders o
-			 INNER JOIN users u ON u.id = o.user_id
-			 WHERE o.service_date = ? AND o.status = 'confirmed'
-			 ORDER BY o.id"
+			"SELECT DISTINCT ol.item_name
+			 FROM order_lines ol
+			 INNER JOIN orders o ON o.id = ol.order_id
+			 WHERE o.service_date = ? AND o.status = ?
+			   AND NOT EXISTS (
+				   SELECT 1 FROM menu_items m
+				   WHERE m.name = ol.item_name
+					 AND m.service_date = o.service_date
+					 AND m.status = 'published'
+			   )
+			 ORDER BY ol.item_name COLLATE NOCASE"
 		);
 
-		$statement->execute( array( $serviceDate ) );
+		$statement->execute( array( $serviceDate, self::STATUS_CONFIRMED ) );
+
+		return array_map( static fn( array $row ): string => (string) $row['item_name'], $statement->fetchAll() );
+	}
+
+	/**
+	 * @param string $status confirmed, cancelled, or '' for both.
+	 */
+	public static function forServiceDate( string $serviceDate, string $status = self::STATUS_CONFIRMED ): array {
+		$sql = "SELECT o.*, u.name AS user_name, u.email AS user_email, u.group_name AS user_group
+				FROM orders o
+				INNER JOIN users u ON u.id = o.user_id
+				WHERE o.service_date = ?";
+
+		$params = array( $serviceDate );
+
+		if ( '' !== $status ) {
+			$sql     .= ' AND o.status = ?';
+			$params[] = $status;
+		}
+
+		$statement = Database::pdo()->prepare( $sql . ' ORDER BY o.id' );
+		$statement->execute( $params );
 
 		return $statement->fetchAll();
 	}

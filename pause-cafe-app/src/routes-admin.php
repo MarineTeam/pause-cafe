@@ -8,6 +8,7 @@
 
 declare(strict_types=1);
 
+use PauseCafe\AdminNav;
 use PauseCafe\Auth;
 use PauseCafe\Blackouts;
 use PauseCafe\Csrf;
@@ -42,7 +43,7 @@ $router->get(
 	static function () use ( $requireAdmin, $query ): void {
 		$requireAdmin();
 
-		$dates       = Menu::serviceDates();
+		$dates       = organiser_service_dates();
 		$requested   = $query( 'date' );
 		$serviceDate = in_array( $requested, $dates, true )
 			? $requested
@@ -551,17 +552,152 @@ $router->get(
 	static function () use ( $requireAdmin, $query ): void {
 		$requireAdmin();
 
-		$serviceDate = $query( 'date' ) ?: ( Menu::currentServiceDate() ?? '' );
+		$dates       = organiser_service_dates();
+		$requested   = $query( 'date' );
+		$serviceDate = in_array( $requested, $dates, true )
+			? $requested
+			: ( Menu::currentServiceDate() ?? ( $dates ? (string) end( $dates ) : '' ) );
+
+		$status = $query( 'status' );
+
+		if ( ! in_array( $status, array( Orders::STATUS_CONFIRMED, Orders::STATUS_CANCELLED, 'all' ), true ) ) {
+			$status = Orders::STATUS_CONFIRMED;
+		}
+
+		$orders = $serviceDate
+			? Orders::forServiceDate( $serviceDate, 'all' === $status ? '' : $status )
+			: array();
 
 		echo View::render(
 			'admin/orders',
 			array(
 				'title'       => 'Orders',
 				'serviceDate' => $serviceDate,
-				'dates'       => Menu::serviceDates(),
-				'orders'      => $serviceDate ? Orders::forServiceDate( $serviceDate ) : array(),
+				'dates'       => $dates,
+				'status'      => $status,
+				'orders'      => $orders,
+				// Which dishes on this date are no longer on the menu, so the
+				// page can say so rather than leaving an organiser to wonder
+				// why a dish they cannot find still has orders against it.
+				'retired'     => $serviceDate ? Orders::retiredDishes( $serviceDate ) : array(),
 			)
 		);
+	}
+);
+
+/**
+ * One action applied to whichever orders were ticked.
+ *
+ * Every branch works from the same validated set, and an id that is not on the
+ * date being shown is dropped rather than acted on — the form is the only thing
+ * that says which orders these are, and it arrives from a browser.
+ */
+$router->post(
+	'/admin/orders/bulk',
+	static function () use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$serviceDate = $post( 'date' );
+		$status      = $post( 'status', Orders::STATUS_CONFIRMED );
+		$back        = '/admin/orders?date=' . urlencode( $serviceDate ) . '&status=' . urlencode( $status );
+
+		$wanted = array_map( 'intval', (array) ( $_POST['ids'] ?? array() ) );
+
+		if ( ! $wanted ) {
+			View::flash( 'notice', 'Nothing was ticked, so nothing happened.' );
+			View::redirect( $back );
+		}
+
+		// Only orders actually on this date, so a posted id cannot reach an
+		// order the organiser was not looking at.
+		$onThisDate = array();
+
+		foreach ( Orders::forServiceDate( $serviceDate, '' ) as $candidate ) {
+			$onThisDate[ (int) $candidate['id'] ] = $candidate;
+		}
+
+		$chosen = array();
+
+		foreach ( $wanted as $id ) {
+			if ( isset( $onThisDate[ $id ] ) ) {
+				$chosen[] = $onThisDate[ $id ];
+			}
+		}
+
+		if ( ! $chosen ) {
+			View::flash( 'error', 'Those orders are not on this date.' );
+			View::redirect( $back );
+		}
+
+		switch ( $post( 'action' ) ) {
+			case 'paid':
+			case 'unpaid':
+				$paid = 'paid' === $post( 'action' );
+				$done = 0;
+
+				foreach ( $chosen as $order ) {
+					if ( Orders::STATUS_CANCELLED === $order['status'] ) {
+						continue;
+					}
+
+					Orders::markPaid( (int) $order['id'], $paid );
+					++$done;
+				}
+
+				View::flash( 'success', $done . ' order(s) marked ' . ( $paid ? 'paid' : 'unpaid' ) . '.' );
+				break;
+
+			case 'cancel':
+				$done    = 0;
+				$skipped = 0;
+
+				foreach ( $chosen as $order ) {
+					if ( Orders::STATUS_CANCELLED === $order['status'] ) {
+						++$skipped;
+
+						continue;
+					}
+
+					// The single-order path, once per order: same refund, same
+					// email. Cancelling in bulk must not mean cancelling by a
+					// different set of rules.
+					Orders::cancel( (int) $order['id'], Auth::id() );
+					Notifications::orderCancelled( (int) $order['id'] );
+					++$done;
+				}
+
+				View::flash(
+					'success',
+					$done . ' order(s) cancelled, refunded where they were paid from a wallet, and everyone told.'
+					. ( $skipped > 0 ? ' ' . $skipped . ' were already cancelled.' : '' )
+				);
+				break;
+
+			case 'resend':
+				$done = 0;
+
+				foreach ( $chosen as $order ) {
+					if ( Orders::STATUS_CANCELLED === $order['status'] ) {
+						continue;
+					}
+
+					Notifications::orderPlaced( (int) $order['id'] );
+					++$done;
+				}
+
+				View::flash( 'success', 'Confirmation re-sent for ' . $done . ' order(s).' );
+				break;
+
+			case 'export':
+				orders_csv( $chosen, $serviceDate );
+				exit;
+
+			default:
+				View::flash( 'error', 'Pick something to do with them.' );
+		}
+
+		View::redirect( $back );
 	}
 );
 
@@ -577,7 +713,7 @@ $router->get(
 			array(
 				'title'       => 'Order for someone',
 				'users'       => Users::all(),
-				'dates'       => Menu::serviceDates(),
+				'dates'       => organiser_service_dates(),
 				'serviceDate' => $serviceDate,
 				'items'       => $serviceDate ? Menu::itemsForServiceDate( $serviceDate ) : array(),
 				'methods'     => Payments::enabled(),
@@ -708,7 +844,7 @@ $router->get(
 	static function () use ( $requireAdmin, $query ): void {
 		$requireAdmin();
 
-		$dates       = Menu::serviceDates();
+		$dates       = organiser_service_dates();
 		$serviceDate = $query( 'date' ) ?: ( Menu::currentServiceDate() ?? ( $dates ? end( $dates ) : '' ) );
 
 		echo View::render(
@@ -1041,6 +1177,76 @@ function menu_change_note(): string {
 	return '';
 }
 
+/**
+ * Every date an organiser might need to open, newest handling first.
+ *
+ * The union of what is on the menu and what has been ordered, and the union is
+ * the point. Menu::serviceDates() lists dates with a *published* dish, and
+ * deleting a dish that has been sold drafts it rather than removing it -- so
+ * the date it was served on could disappear from every picker while its orders,
+ * and the money taken for them, were still sitting in the database with no way
+ * to reach them.
+ *
+ * @return string[] Ascending.
+ */
+function organiser_service_dates(): array {
+	$dates = array_unique( array_merge( Menu::serviceDates(), Orders::serviceDates() ) );
+
+	sort( $dates );
+
+	return array_values( $dates );
+}
+
+/**
+ * Sends the ticked orders as a CSV and stops.
+ *
+ * One line per meal rather than per order, because that is the shape anyone
+ * opening it wants — the same shape the kitchen export uses.
+ *
+ * @param array[] $orders Rows from Orders::forServiceDate().
+ */
+function orders_csv( array $orders, string $serviceDate ): void {
+	nocache_headers_compat();
+
+	header( 'Content-Type: text/csv; charset=utf-8' );
+	header( 'Content-Disposition: attachment; filename=orders-' . ( $serviceDate ?: 'selected' ) . '.csv' );
+
+	$out = fopen( 'php://output', 'w' );
+
+	// Excel needs the BOM to read the Chinese dish names correctly.
+	fwrite( $out, chr( 0xEF ) . chr( 0xBB ) . chr( 0xBF ) );
+
+	csv_row(
+		$out,
+		array( 'Order', 'Status', 'Date', 'Account', 'Email', 'Group', 'Dish', 'Qty', 'For', 'Meal note', 'Payment', 'Paid', 'Line total' )
+	);
+
+	foreach ( $orders as $order ) {
+		foreach ( Orders::lines( (int) $order['id'] ) as $line ) {
+			csv_row(
+				$out,
+				array(
+					$order['id'],
+					$order['status'],
+					$order['service_date'],
+					$order['user_name'],
+					$order['user_email'],
+					$order['user_group'],
+					$line['item_name'],
+					$line['qty'],
+					$line['person_name'],
+					$line['note'] ?? '',
+					Payments::label( (string) $order['payment_method'] ),
+					Orders::isPaid( $order ) ? 'yes' : 'no',
+					Money::format( (int) $line['unit_price_cents'] * (int) $line['qty'] ),
+				)
+			);
+		}
+	}
+
+	fclose( $out );
+}
+
 function sanitise_time( string $value, string $fallback ): string {
 	return preg_match( '/^([01]?\d|2[0-3]):([0-5]\d)$/', $value ) ? $value : $fallback;
 }
@@ -1130,6 +1336,27 @@ $router->post(
 
 		View::flash( 'success', 'Email settings saved.' );
 		View::redirect( '/admin/settings' );
+	}
+);
+
+/**
+ * Which way this organiser wants the menu. Theirs alone — it is on the account,
+ * not in settings, so it cannot rearrange anybody else's screen.
+ */
+$router->post(
+	'/admin/nav',
+	static function () use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		AdminNav::setStyle( Auth::id(), $post( 'style' ) );
+		Auth::refresh();
+
+		// Straight back where they were, so flipping it does not also navigate.
+		$back = (string) ( $_SERVER['HTTP_REFERER'] ?? '' );
+		$path = '/' . trim( (string) parse_url( $back, PHP_URL_PATH ), '/' );
+
+		View::redirect( AdminNav::appliesTo( $path ) ? $path : '/admin' );
 	}
 );
 

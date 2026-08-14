@@ -8,6 +8,51 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.13.0 — 2026-08-14
+
+### Fixed
+
+- **Orders could become unreachable when their dish was taken off the menu.**
+  Deleting a dish that has already been sold drafts it rather than removing it,
+  which is what keeps the orders pointing somewhere — but every date picker was
+  built from *published* dishes only. So the same act that protected the orders
+  also hid them: the serving date dropped off the Orders, Overview, Report and
+  order-for-someone screens, and there was no way left to view, settle or cancel
+  those orders, or to refund what had been paid.
+
+  The organiser screens now offer the union of dates on the menu and dates with
+  orders, and the Orders page names any dish that is no longer published rather
+  than leaving you to wonder why it cannot be found.
+
+### Added
+
+- **Bulk actions on the Orders page.** Tick any number and mark them paid or
+  unpaid, cancel them, download just those as CSV, or re-send the confirmation.
+  Cancelling in bulk goes through the single-order path once per order, so the
+  wallet refunds and the emails are exactly the same.
+- **A status filter on Orders** — live, cancelled, or both. Cancelled orders
+  were previously invisible everywhere, which is a poor way to treat a record of
+  money being refunded.
+- **The organiser menu can run down the side**, WordPress style, or stay across
+  the top. It is a per-account choice: one organiser moving it does not move it
+  for anybody else. On a narrow screen the sidebar folds back to the top.
+- **Jump links on Settings**, which is long enough that reaching the blackout
+  dates meant scrolling past everything else.
+
+### Changed
+
+- The organiser navigation is rendered by the layout rather than included at the
+  top of each screen. The side arrangement has to sit *beside* the content, and
+  a template included at the top of that content cannot do that. `_tabs.php` is
+  gone; `AdminNav` owns the list and `admin/_nav.php` draws it.
+
+### Notes
+
+- Bulk actions only ever touch orders on the date being shown. An id posted for
+  anything else is dropped rather than acted on.
+- `Orders::retiredDishes()` matches on the name stored against the line, because
+  that is what an organiser recognises and because a line whose dish row was
+  hard-deleted has nothing else left to match on.
 ## 0.12.1 — 2026-08-14
 
 ### Fixed

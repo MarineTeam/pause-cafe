@@ -2,8 +2,6 @@
 use PauseCafe\Blackouts;
 use PauseCafe\Schedule;
 
-include \PauseCafe\View::locate( 'admin/_tabs' );
-
 $total = 0;
 
 foreach ( $summary as $dishes ) {

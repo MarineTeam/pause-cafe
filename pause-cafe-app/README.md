@@ -281,6 +281,18 @@ Clearing a cell in the grid moves that dish to draft rather than deleting it, so
 anything ordered against it keeps its history. Days already served are
 read-only.
 
+## Finding your way round
+
+The organiser menu sits across the top, or down the side like WordPress —
+whichever each organiser prefers. It is stored on the account, so moving it does
+not move it for anyone else, and the link to flip it is in the menu itself. On a
+narrow screen the sidebar folds back to the top, because a sidebar on a phone is
+just a list to scroll past.
+
+Long screens carry a **Jump to** row at the top. Settings has one; anything else
+that grows can add one by setting `$jump` and including
+`partials/jump-links.php`.
+
 ## The overview
 
 `/admin` opens on the next serving date: how many meals, how much is still to
@@ -292,6 +304,23 @@ last week can be checked and a fortnight ahead can be seen without leaving the
 page. The date is in the URL (`/admin?date=2026-08-16`), so a particular cook
 list can be bookmarked or sent on. A date that is not the next serving is
 labelled as such, which keeps a printout from being mistaken for this week's.
+
+## Orders
+
+`/admin/orders` is one serving date at a time. Tick any number of orders and
+mark them paid or unpaid, cancel them, download those as CSV, or re-send the
+confirmation. Cancelling in bulk runs the single-order path once per order, so
+the wallet refunds and the emails are identical either way.
+
+**Cancelled orders stay visible.** The filter offers live, cancelled, or both —
+a cancellation can move money back into a wallet, and a refund with no record
+you can look at is not much of a record.
+
+**A dish taken off the menu does not hide its orders.** Deleting a dish that has
+already been sold turns it into a draft rather than removing it, so the orders
+keep pointing somewhere. The date stays on every organiser screen even though
+nothing published remains on it, and the Orders page names the dish so you are
+not left hunting for something that is no longer on the menu.
 
 ## The kitchen list
 

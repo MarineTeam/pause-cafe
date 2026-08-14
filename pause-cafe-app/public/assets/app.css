@@ -429,9 +429,100 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 .right { text-align: right; }
 .stack > * + * { margin-top: 10px; }
 
-.admin-tabs { display: flex; gap: 18px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 28px; padding-bottom: 12px; }
-.admin-tabs a { text-decoration: none; font-size: 15px; }
-.admin-tabs a.is-active { font-weight: 600; text-decoration: underline; }
+/* Organiser navigation ---------------------------------------------------
+ *
+ * Two arrangements of the same list, chosen per organiser. The side one is a
+ * grid on the <main>, which is why the page content is wrapped in .admin-body:
+ * a grid puts every child in its own cell, so the content has to be one child.
+ */
+
+.admin-nav__list { list-style: none; margin: 0; padding: 0; }
+.admin-nav a { text-decoration: none; font-size: 15px; color: var(--ink); display: block; }
+.admin-nav a.is-active { font-weight: 600; }
+.admin-nav__flip { margin: 0; }
+.admin-nav__flip button { font-size: 13px; color: var(--ink-soft); }
+
+/* Across the top, as it has always been. */
+.admin-nav--top {
+	border-bottom: 1px solid var(--line);
+	margin-bottom: 28px;
+	padding-bottom: 12px;
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 18px;
+	flex-wrap: wrap;
+}
+
+.admin-nav--top .admin-nav__list { display: flex; gap: 18px; flex-wrap: wrap; }
+.admin-nav--top a.is-active { text-decoration: underline; }
+
+/* Down the side. */
+.wrap--admin-side { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 36px; align-items: start; }
+
+.admin-nav--side { position: sticky; top: 20px; }
+.admin-nav--side .admin-nav__list { display: flex; flex-direction: column; gap: 1px; margin-bottom: 16px; }
+
+.admin-nav--side a {
+	padding: 7px 10px;
+	border-radius: var(--radius);
+	border-left: 2px solid transparent;
+}
+
+.admin-nav--side a:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+
+.admin-nav--side a.is-active {
+	background: var(--card-bg);
+	border-left-color: var(--button);
+	border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.admin-nav--side .admin-nav__flip { padding-left: 10px; }
+
+/* A sidebar on a phone is just a long list to scroll past, so it folds back
+   into the top arrangement at the width where the columns stop fitting. */
+@media (max-width: 760px) {
+	.wrap--admin-side { display: block; }
+
+	.admin-nav--side {
+		position: static;
+		border-bottom: 1px solid var(--line);
+		margin-bottom: 24px;
+		padding-bottom: 12px;
+	}
+
+	.admin-nav--side .admin-nav__list { flex-direction: row; flex-wrap: wrap; gap: 14px; }
+	.admin-nav--side a { padding: 0; border-left: 0; background: none; }
+	.admin-nav--side a.is-active { text-decoration: underline; background: none; }
+	.admin-nav--side .admin-nav__flip { padding-left: 0; margin-top: 10px; }
+}
+
+/* A cancelled order is still readable, just plainly not live. */
+.is-cancelled td { opacity: 0.6; }
+
+/* Jump links ------------------------------------------------------------- */
+
+.jump {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin: 0 0 28px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--line);
+	font-size: 14px;
+}
+
+.jump__label { color: var(--ink-soft); }
+.jump__list { list-style: none; display: flex; gap: 14px; flex-wrap: wrap; margin: 0; padding: 0; }
+.jump__list a { text-decoration: none; }
+.jump__list a:hover { text-decoration: underline; }
+
+/*
+ * Stops a jumped-to heading from landing flush against the top of the window,
+ * and clears the sticky sidebar when that is the chosen arrangement.
+ */
+[id] { scroll-margin-top: 20px; }
 
 /* Kitchen list ---------------------------------------------------------- */
 

@@ -2,7 +2,6 @@
 use PauseCafe\Csrf;
 use PauseCafe\Money;
 
-include \PauseCafe\View::locate( 'admin/_tabs' );
 ?>
 
 <h1>People</h1>

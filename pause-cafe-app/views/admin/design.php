@@ -10,7 +10,6 @@ use PauseCafe\Csrf;
 use PauseCafe\Design;
 use PauseCafe\Settings;
 
-include \PauseCafe\View::locate( 'admin/_tabs' );
 ?>
 
 <h1>Design</h1>

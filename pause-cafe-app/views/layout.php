@@ -69,18 +69,34 @@ $themeCss  = Themes::stylesheetUrl();
 	</div>
 </header>
 
-<main class="wrap">
-	<?php foreach ( $flash as $message ) : ?>
-		<div class="flash flash--<?= e( $message['type'] ) ?>"><?= e( $message['message'] ) ?></div>
-	<?php endforeach; ?>
-
-	<?php if ( $user && 0 === (int) $user['is_approved'] ) : ?>
-		<div class="flash flash--notice">
-			Your account is waiting for an organiser to approve it. You can look at the menu, but not order yet.
-		</div>
+<?php
+/*
+ * Organiser screens get their navigation from here, not from the template, so
+ * that the side arrangement can put it beside the content. $content is already
+ * a rendered string by the time the layout runs, which is what makes wrapping
+ * it possible at all.
+ */
+$adminNav   = \PauseCafe\Auth::isAdmin() && \PauseCafe\AdminNav::appliesTo( $_SERVER['REQUEST_URI'] ?? '/' );
+$adminStyle = $adminNav ? \PauseCafe\AdminNav::style() : '';
+?>
+<main class="wrap <?= $adminNav ? 'wrap--admin wrap--admin-' . e( $adminStyle ) : '' ?>">
+	<?php if ( $adminNav ) : ?>
+		<?php include View::locate( 'admin/_nav' ); ?>
 	<?php endif; ?>
 
-	<?= $content ?>
+	<div class="admin-body">
+		<?php foreach ( $flash as $message ) : ?>
+			<div class="flash flash--<?= e( $message['type'] ) ?>"><?= e( $message['message'] ) ?></div>
+		<?php endforeach; ?>
+
+		<?php if ( $user && 0 === (int) $user['is_approved'] ) : ?>
+			<div class="flash flash--notice">
+				Your account is waiting for an organiser to approve it. You can look at the menu, but not order yet.
+			</div>
+		<?php endif; ?>
+
+		<?= $content ?>
+	</div>
 </main>
 
 <footer class="site-footer">
