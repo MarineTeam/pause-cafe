@@ -1156,23 +1156,31 @@ $router->post(
 			}
 		}
 
-		Settings::setMany(
-			array(
-				'signin_admin_rescue'    => isset( $_POST['signin_admin_rescue'] ) ? 'yes' : 'no',
-				'signin_external_create' => isset( $_POST['signin_external_create'] ) ? 'yes' : 'no',
-			)
+		Settings::set(
+			'signin_external_create',
+			isset( $_POST['signin_external_create'] ) ? 'yes' : 'no'
 		);
 
 		/*
-		 * Said after saving rather than refusing the save. The organiser is
-		 * signed in as they read it, so they have time to fix it; refusing
-		 * would also mean refusing the half of the form that was fine.
+		 * The one setting on this screen that can lock everybody out, so it is
+		 * the one that does not simply do as it is told.
+		 *
+		 * Switching the rescue off is only allowed once an organiser has
+		 * actually signed in through a provider. Until then it is the only way
+		 * in that is known to work -- a provider whose settings are filled in
+		 * has proved nothing, and a typo in a client secret looks exactly like
+		 * a working configuration until somebody tries it.
 		 */
-		if ( ! SignIn::organiserRoutes() ) {
+		$keepRescue = isset( $_POST['signin_admin_rescue'] );
+		$refused    = ! $keepRescue && ! SignIn::rescueMayBeDisabled();
+
+		Settings::set( 'signin_admin_rescue', $keepRescue || $refused ? 'yes' : 'no' );
+
+		if ( $refused ) {
 			View::flash(
 				'error',
-				'Nothing usable is switched on, so the password sign-in is being kept available. '
-				. 'Set up a method, or turn the organiser password back on.'
+				'Everything else was saved, but the organiser password has been left on. '
+				. SignIn::rescueLockReason()
 			);
 			View::redirect( '/admin/signin' );
 		}

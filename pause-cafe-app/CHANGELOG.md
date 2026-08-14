@@ -8,6 +8,35 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.10.1 — 2026-08-14
+
+### Fixed
+
+- **The organiser password rescue could be switched off into a lockout.** With
+  passwords off for members, a provider configured but never actually used, and
+  the rescue turned off, there was no way into the site at all. The check meant
+  to catch this counted a *configured* provider as a way in, so it never fired.
+
+  The rescue can now only be turned off once an organiser has genuinely signed
+  in through a provider. Until then the checkbox is held on and explains what
+  would have to happen first. Everything else on the form still saves; only that
+  switch is overridden.
+
+### Added
+
+- **`tools/rescue.php`**, a command-line way back in for when it goes wrong
+  anyway — the tenant is deleted, or the organiser who proved it works has left.
+  It turns password sign-in and the organiser route back on, lists organisers
+  and whether they still have a password, and can generate a new one. The
+  password is printed rather than taken as an argument, so it stays out of the
+  shell history. It refuses to run over the web.
+
+### Notes
+
+- The guard is about proof, not configuration. A client secret with a typo in it
+  is configured, and looks exactly like a working one until somebody tries it.
+  Deleting the organiser who proved a provider works withdraws the proof.
+
 ## 0.10.0 — 2026-08-13
 
 ### Added

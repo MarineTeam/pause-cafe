@@ -535,6 +535,33 @@ Settings::setMany(
 
 check( 'with passwords back, the rescue is redundant', SignIn::rescueOffered(), false );
 
+echo "\nThe rescue cannot be given up before it has been replaced\n";
+
+/*
+ * The lockout this guards against: switch passwords off, point at a provider
+ * nobody has ever signed in through, switch the rescue off, and there is no
+ * way in at all. A configured provider is not a working one.
+ */
+check( 'a configured provider does not count as proven', SignIn::rescueMayBeDisabled(), false );
+
+$organiser = Users::create( 'ada@example.org', 'a-good-password', 'Ada Organiser', '', Users::ROLE_ADMIN, true );
+
+check( 'nor does an organiser with no linked account', SignIn::rescueMayBeDisabled(), false );
+
+// A member signing in externally proves nothing about the organisers.
+Identities::resolve( 'auth0', new Profile( 'auth0|a-member', 'member@example.org', true, 'A Member' ) );
+
+check( 'nor a member who has signed in that way', SignIn::rescueMayBeDisabled(), false );
+
+Identities::resolve( 'auth0', new Profile( 'auth0|ada', 'ada@example.org', true, 'Ada Organiser' ) );
+
+check( 'but an organiser who has is enough', SignIn::rescueMayBeDisabled(), true );
+
+// And if that organiser is removed, the proof goes with them.
+Users::delete( $organiser );
+
+check( 'and it is withdrawn if they are removed', SignIn::rescueMayBeDisabled(), false );
+
 echo "\nMethods describe themselves to the settings screen\n";
 
 foreach ( SignIn::all() as $id => $method ) {

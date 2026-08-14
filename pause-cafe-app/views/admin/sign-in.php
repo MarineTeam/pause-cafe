@@ -93,18 +93,32 @@ $routes = SignIn::organiserRoutes();
 	<div class="panel">
 		<h3>Safety net</h3>
 
+		<?php $mayDisable = SignIn::rescueMayBeDisabled(); ?>
+
 		<div class="field">
 			<label>
 				<input type="checkbox" name="signin_admin_rescue" value="1"
-					<?= SignIn::rescueAllowed() ? 'checked' : '' ?>>
+					<?= SignIn::rescueAllowed() ? 'checked' : '' ?>
+					<?= $mayDisable ? '' : 'disabled' ?>>
 				Organisers can always sign in with a password
+				<?php if ( ! $mayDisable ) : ?>
+					<span class="pill pill--open">Held on</span>
+				<?php endif; ?>
 			</label>
-			<p class="help">
-				Keeps a way in that does not depend on anything outside this server.
-				Turning it off means a mistyped client secret or an expired provider
-				account locks every organiser out, with no way back except editing
-				the database by hand. Leave it on.
-			</p>
+
+			<?php if ( $mayDisable ) : ?>
+				<p class="help">
+					Keeps a way in that does not depend on anything outside this server.
+					Turning it off is allowed now that a provider has been shown to work,
+					but it does mean an expired provider account would lock every
+					organiser out.
+				</p>
+			<?php else : ?>
+				<p class="help"><?= e( SignIn::rescueLockReason() ) ?></p>
+
+				<?php // A disabled checkbox posts nothing, which would read as "turn it off". ?>
+				<input type="hidden" name="signin_admin_rescue" value="1">
+			<?php endif; ?>
 		</div>
 
 		<div class="field">
@@ -123,6 +137,10 @@ $routes = SignIn::organiserRoutes();
 		<p class="help">
 			Ways an organiser can currently get in:
 			<strong><?= $routes ? e( implode( ', ', $routes ) ) : 'none' ?></strong>.
+			<?php if ( ! $mayDisable ) : ?>
+				Of those, only the password has actually been used — the rest are
+				configured, which is not the same thing.
+			<?php endif; ?>
 		</p>
 	</div>
 

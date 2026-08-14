@@ -133,9 +133,6 @@ class SignIn {
 	/**
 	 * The methods an organiser could use to get back in.
 	 *
-	 * Used by the settings screen to refuse a combination that would strand
-	 * them, before it is saved rather than after.
-	 *
 	 * @return string[] Method labels.
 	 */
 	public static function organiserRoutes(): array {
@@ -150,6 +147,29 @@ class SignIn {
 		}
 
 		return $routes;
+	}
+
+	/**
+	 * Whether the password rescue can safely be switched off.
+	 *
+	 * Only once an organiser has genuinely signed in through a provider. An
+	 * identity provider that is merely filled in is not a way in — a client
+	 * secret with a typo in it is filled in, and the first time anybody finds
+	 * out is when they try to sign in and cannot.
+	 *
+	 * So the old door stays until somebody has walked through the new one.
+	 */
+	public static function rescueMayBeDisabled(): bool {
+		return Identities::provenForAdmin();
+	}
+
+	/**
+	 * Why the rescue cannot be switched off yet, for the settings screen.
+	 */
+	public static function rescueLockReason(): string {
+		return 'No organiser has signed in through a provider yet, so this is still the only '
+			. 'way in that is known to work. Sign in with one — in another browser, so you do '
+			. 'not lock this one out — and then it can be turned off.';
 	}
 
 	public static function label( string $id ): string {
