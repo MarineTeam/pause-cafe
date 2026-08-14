@@ -3,7 +3,7 @@ use PauseCafe\Csrf;
 use PauseCafe\Money;
 use PauseCafe\Schedule;
 
-include __DIR__ . '/_tabs.php';
+include \PauseCafe\View::locate( 'admin/_tabs' );
 ?>
 
 <h1>Order for someone</h1>
@@ -106,7 +106,7 @@ include __DIR__ . '/_tabs.php';
 									'id'    => 'line-group-' . (int) $item['id'],
 									'label' => '',
 								);
-								include __DIR__ . '/../partials/group-select.php';
+								include \PauseCafe\View::locate( 'partials/group-select' );
 								?>
 							</td>
 						</tr>

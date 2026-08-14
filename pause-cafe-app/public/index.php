@@ -31,6 +31,7 @@ use PauseCafe\Schedules;
 use PauseCafe\Settings;
 use PauseCafe\SignIn;
 use PauseCafe\SignIn\Outcome;
+use PauseCafe\Themes;
 use PauseCafe\Users;
 use PauseCafe\View;
 use PauseCafe\Wallet;
@@ -108,6 +109,33 @@ $router->post(
 	}
 );
 
+/*
+ * The active theme's stylesheet.
+ *
+ * Served through a route rather than from the document root, because a theme
+ * is mostly PHP templates that run with full access to the app, and that
+ * directory must not be reachable. Exactly one filename is ever read, chosen
+ * by Themes from the directories that actually exist -- the stored setting is
+ * never used to build a path.
+ */
+$router->get(
+	'/theme.css',
+	static function (): void {
+		$file = Themes::stylesheet();
+
+		if ( '' === $file ) {
+			http_response_code( 404 );
+			exit;
+		}
+
+		header( 'Content-Type: text/css; charset=utf-8' );
+		header( 'Cache-Control: public, max-age=86400' );
+
+		readfile( $file );
+		exit;
+	}
+);
+
 /* -------------------------------------------------------------------------
  * Storefront
  * ---------------------------------------------------------------------- */
@@ -146,9 +174,30 @@ $router->get(
 
 			// A blacked-out week still resolves a date, so the label can be shown
 			// rather than an empty page.
+			/*
+			 * The section's own window, so the page can say whether ordering is
+			 * open without picking a dish to speak for the week. Resolved from a
+			 * row that carries only the schedule and the date, which is exactly
+			 * the case where Schedule::forItem() falls through to the schedule's
+			 * rules -- a dish with its own override does not get to answer for
+			 * everything around it.
+			 */
+			$window = $serviceDate
+				? Schedule::forItem(
+					array(
+						'schedule_id'  => $scheduleId,
+						'service_date' => $serviceDate,
+						'open_from'    => '',
+						'close_at'     => '',
+					)
+				)
+				: null;
+
 			$sections[] = array(
 				'rules'       => $rules,
+				'scheduleId'  => $scheduleId,
 				'serviceDate' => $serviceDate,
+				'window'      => $window,
 				'blocks'      => $blocks,
 				'blackout'    => $serviceDate && Blackouts::isBlackout( $serviceDate )
 					? Blackouts::label( $serviceDate )

@@ -9,6 +9,7 @@ $tabs = array(
 	'/admin/orders'   => 'Orders',
 	'/kitchen'        => 'Kitchen list',
 	'/admin/users'    => 'People',
+	'/admin/design'   => 'Design',
 	'/admin/signin'   => 'Signing in',
 	'/admin/settings' => 'Settings',
 );

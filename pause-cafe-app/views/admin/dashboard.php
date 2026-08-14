@@ -3,7 +3,7 @@ use PauseCafe\Money;
 use PauseCafe\Orders;
 use PauseCafe\Schedule;
 
-include __DIR__ . '/_tabs.php';
+include \PauseCafe\View::locate( 'admin/_tabs' );
 
 $meals = 0;
 

@@ -1,37 +1,123 @@
 /*
- * Matches the look of the current pause-cafe.in: Inter, white, near-black text,
- * square charcoal buttons, centred menu headings.
+ * Every colour, corner and typeface in the app resolves to one of the custom
+ * properties below. Nothing further down this file hardcodes a colour.
+ *
+ * That is what makes the Design screen possible: it writes a second :root block
+ * inline in the page, overriding whichever of these the organiser has changed,
+ * and the whole site follows -- including admin screens nobody re-styled. Adding
+ * a hardcoded colour anywhere below silently opts that element out of theming
+ * and out of dark mode, so don't.
+ *
+ * Dark mode is declared three times on purpose. The full light palette sits on
+ * bare :root; the dark values are repeated under prefers-color-scheme (guarded
+ * so an explicit light choice wins) and again under [data-theme="dark"] (so an
+ * explicit dark choice wins on a light OS). A value defined only inside a media
+ * query has no light-mode fallback, which is the usual way this breaks.
  */
 
+/*
+ * These values are the "Bold" preset, and they must stay identical to the
+ * defaults in Design::tokens(). Design::css() only emits a property when it
+ * differs from its default, so a value that disagrees with this block would be
+ * silently dropped and the page would show whatever is here instead.
+ * tests/test-design.php asserts the two agree.
+ */
 :root {
+	/* Ink and lines */
 	--ink: #111314;
-	--ink-soft: #55595c;
-	--line: #e3e4e6;
-	--button: #333333;
-	--button-hover: #111314;
+	--ink-soft: #5f5e5a;
+	--line: #e6e2d8;
+
+	/* Surfaces */
+	--page-bg: #ffffff;
+	--card-bg: #f4f1ea;
+	--card-border: 1px solid transparent;
+
+	/* Controls */
+	--button: #0f6e56;
+	--button-hover: #0b5442;
+	--button-ink: #ffffff;
+	--field-bg: #ffffff;
+	--radius: 14px;
+
+	/* Type */
+	--font-body: Inter, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+	--font-heading: var(--font-body);
+	--heading-weight: 600;
+
+	/* Spacing */
+	--pad-card: 18px;
+
+	/* States. Kept distinct from the palette above: an organiser may recolour
+	   the site, but "sold out" has to keep reading as a warning. */
 	--ok-bg: #e1f5ee;
 	--ok-ink: #0f6e56;
 	--warn-bg: #faeeda;
 	--warn-ink: #854f0b;
 	--bad-bg: #fcebeb;
 	--bad-ink: #a32d2d;
+	--neutral-bg: #f1efe8;
+	--neutral-ink: #5f5e5a;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--ink: #ececec;
+		--ink-soft: #a2a6ab;
+		--line: #2e3135;
+		--page-bg: #17181a;
+		--card-bg: #202225;
+		--button-ink: #ffffff;
+		--field-bg: #1c1e21;
+		--ok-bg: #0f3b30;
+		--ok-ink: #7fd9bb;
+		--warn-bg: #40300f;
+		--warn-ink: #f0c375;
+		--bad-bg: #45201f;
+		--bad-ink: #f0a3a3;
+		--neutral-bg: #26282b;
+		--neutral-ink: #a2a6ab;
+	}
+}
+
+:root[data-theme="dark"] {
+	--ink: #ececec;
+	--ink-soft: #a2a6ab;
+	--line: #2e3135;
+	--page-bg: #17181a;
+	--card-bg: #202225;
+	--button-ink: #ffffff;
+	--field-bg: #1c1e21;
+	--ok-bg: #0f3b30;
+	--ok-ink: #7fd9bb;
+	--warn-bg: #40300f;
+	--warn-ink: #f0c375;
+	--bad-bg: #45201f;
+	--bad-ink: #f0a3a3;
+	--neutral-bg: #26282b;
+	--neutral-ink: #a2a6ab;
 }
 
 * { box-sizing: border-box; }
 
 body {
 	margin: 0;
-	font-family: Inter, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+	font-family: var(--font-body);
 	font-size: 16px;
 	line-height: 1.6;
 	color: var(--ink);
-	background: #fff;
+	background: var(--page-bg);
 	-webkit-font-smoothing: antialiased;
 }
 
 .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
 
-h1, h2, h3 { font-weight: 600; line-height: 1.25; margin: 0 0 0.5em; }
+h1, h2, h3 {
+	font-family: var(--font-heading);
+	font-weight: var(--heading-weight);
+	line-height: 1.25;
+	margin: 0 0 0.5em;
+}
 h1 { font-size: 40px; }
 h2 { font-size: 30px; }
 h3 { font-size: 21px; }
@@ -54,11 +140,17 @@ p { margin: 0 0 1em; }
 }
 
 .brand {
+	font-family: var(--font-heading);
 	font-size: 22px;
-	font-weight: 600;
+	font-weight: var(--heading-weight);
 	text-decoration: none;
 	letter-spacing: -0.01em;
+	display: inline-flex;
+	align-items: center;
 }
+
+/* Capped by height rather than width, so a tall logo cannot grow the header. */
+.brand__logo { max-height: 40px; max-width: 220px; width: auto; display: block; }
 
 .site-nav { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .site-nav a { text-decoration: none; font-size: 15px; }
@@ -94,9 +186,9 @@ main.wrap { padding-top: 32px; padding-bottom: 64px; min-height: 60vh; }
 button[type="submit"]:not(.link-button) {
 	display: inline-block;
 	background: var(--button);
-	color: #fff;
+	color: var(--button-ink);
 	border: 0;
-	border-radius: 0;
+	border-radius: var(--radius);
 	padding: 12px 22px;
 	font: inherit;
 	font-size: 15px;
@@ -110,11 +202,12 @@ button[type="submit"]:not(.link-button) {
 button[type="submit"]:not(.link-button):hover { background: var(--button-hover); }
 
 .button--quiet {
-	background: #fff;
+	background: var(--card-bg);
 	color: var(--ink);
 	border: 1px solid var(--line);
 }
-.button--quiet:hover { background: #f6f6f6; }
+/* A wash of the ink colour, so the hover works on a dark card too. */
+.button--quiet:hover { background: color-mix(in srgb, var(--ink) 7%, var(--card-bg)); }
 
 .button--danger { background: var(--bad-ink); }
 
@@ -128,8 +221,8 @@ input[type="date"], input[type="time"], input[type="datetime-local"], select, te
 	font-size: 15px;
 	padding: 9px 11px;
 	border: 1px solid var(--line);
-	border-radius: 0;
-	background: #fff;
+	border-radius: var(--radius);
+	background: var(--field-bg);
 	color: var(--ink);
 	width: 100%;
 	max-width: 100%;
@@ -181,12 +274,25 @@ label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 5px; }
 
 /* Menu ------------------------------------------------------------------ */
 
-.menu-head { text-align: center; margin-bottom: 40px; }
+.menu-head { text-align: center; margin-bottom: 36px; }
 .menu-head h1 { margin-bottom: 6px; }
 .menu-state { color: var(--ink-soft); margin: 0; }
 
 .menu-section { margin-bottom: 3rem; }
-.menu-section__name { text-align: center; margin-bottom: 4px; }
+
+/*
+ * The state of the week, said once above the grid. Left-aligned rather than
+ * centred: it is information to be read, not a title.
+ */
+.week { margin-bottom: 20px; }
+.week__date {
+	font-size: 13px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ink-soft);
+	margin: 0 0 2px;
+}
+.week__name { font-size: 26px; margin: 0 0 8px; }
 
 .location { margin-bottom: 56px; }
 .location h2, .location h3 { text-align: center; }
@@ -213,34 +319,63 @@ label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 5px; }
 	.dishes { grid-template-columns: 1fr; }
 }
 
-.dish { border: 1px solid var(--line); padding: 22px; display: flex; flex-direction: column; }
-
-.dish__where {
-	font-size: 12px;
-	font-weight: 600;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	color: var(--ink-soft);
-	margin: 0 0 6px;
+.dish {
+	background: var(--card-bg);
+	border: var(--card-border);
+	border-radius: var(--radius);
+	padding: var(--pad-card);
+	display: flex;
+	flex-direction: column;
 }
 
-.dish__name { font-size: 19px; margin: 0 0 6px; }
-.dish__desc { color: var(--ink-soft); font-size: 15px; }
-.dish__price { font-weight: 600; margin: 0 0 14px; }
-.dish__note { font-size: 14px; color: var(--warn-ink); background: var(--warn-bg); padding: 8px 10px; margin: 0 0 12px; }
-.dish__left { font-size: 14px; color: var(--ink-soft); margin: 0 0 12px; }
+/* A dish nobody can order recedes rather than disappearing. */
+.dish--shut { opacity: 0.72; }
 
-/* Pushes the buy row to the bottom so cards of differing height line up. */
-.dish__form, .dish__action { margin-top: auto; margin-bottom: 0; }
+/*
+ * Sits flush against the card's edges by cancelling the padding, so a photo
+ * does not appear to float inside a frame. A fixed aspect ratio keeps a row of
+ * cards aligned whatever shape the photos were.
+ */
+.dish__photo {
+	display: block;
+	width: calc(100% + (var(--pad-card) * 2));
+	margin: calc(var(--pad-card) * -1) calc(var(--pad-card) * -1) 14px;
+	aspect-ratio: 3 / 2;
+	object-fit: cover;
+	border-radius: var(--radius) var(--radius) 0 0;
+	background: var(--neutral-bg);
+}
 
-.dish__details { margin-bottom: 12px; }
+.dish__where { margin: 0 0 8px; }
+.dish__name { font-size: 20px; margin: 0 0 6px; }
+.dish__desc { color: var(--ink-soft); font-size: 15px; margin: 0 0 10px; }
+.dish__state { margin: 0 0 10px; }
+
+/*
+ * Price and buy control share one line at the bottom of the card, so a row of
+ * cards lines up on its prices however different their descriptions are.
+ */
+.dish__foot {
+	margin-top: auto;
+	padding-top: 12px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.dish__price { font-size: 17px; font-weight: 600; margin: 0; }
+
+.dish__form { margin-top: auto; margin-bottom: 0; display: flex; flex-direction: column; }
+
+.dish__details { margin-bottom: 4px; }
 .dish__details summary { font-size: 14px; color: var(--ink-soft); cursor: pointer; }
 .dish__details > .field { margin-top: 12px; margin-bottom: 0; }
 
 /* Quantity beside the button rather than stacked above it. */
 .dish__buy { display: flex; gap: 8px; align-items: stretch; }
-.dish__buy input[type="number"] { width: 4.5em; flex: 0 0 auto; text-align: center; }
-.dish__buy button { flex: 1 1 auto; }
+.dish__buy input[type="number"] { width: 4em; flex: 0 0 auto; text-align: center; padding-left: 6px; padding-right: 6px; }
 
 .sr-only {
 	position: absolute;
@@ -262,21 +397,32 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 
 /* Panels ---------------------------------------------------------------- */
 
-.panel { border: 1px solid var(--line); padding: 24px; margin-bottom: 28px; }
+.panel {
+	background: var(--card-bg);
+	border: var(--card-border);
+	border-radius: var(--radius);
+	padding: var(--pad-card);
+	margin-bottom: 28px;
+}
 .panel h2, .panel h3 { margin-top: 0; }
 
 .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 18px; margin-bottom: 32px; }
-.stat { border: 1px solid var(--line); padding: 18px; }
+.stat {
+	background: var(--card-bg);
+	border: var(--card-border);
+	border-radius: var(--radius);
+	padding: 18px;
+}
 .stat__label { font-size: 13px; color: var(--ink-soft); margin: 0 0 4px; }
 .stat__value { font-size: 26px; font-weight: 600; margin: 0; }
 
 .balance { font-size: 34px; font-weight: 600; margin: 0 0 4px; }
 .balance--low { color: var(--bad-ink); }
 
-.pill { display: inline-block; padding: 2px 9px; font-size: 12px; font-weight: 500; }
+.pill { display: inline-block; padding: 2px 9px; font-size: 12px; font-weight: 500; border-radius: var(--radius); }
 .pill--open { background: var(--ok-bg); color: var(--ok-ink); }
 .pill--closed, .pill--upcoming { background: var(--warn-bg); color: var(--warn-ink); }
-.pill--past, .pill--none { background: #f1efe8; color: #5f5e5a; }
+.pill--past, .pill--none { background: var(--neutral-bg); color: var(--neutral-ink); }
 .pill--blackout { background: var(--bad-bg); color: var(--bad-ink); }
 
 .muted { color: var(--ink-soft); }

@@ -100,7 +100,7 @@ HOME_HTML=$(curl -s "$BASE/")
 has "the dish shows on the public menu" "$HOME_HTML" "BBQ pork on rice"
 has "with its price" "$HOME_HTML" '\$10\.00'
 has "under its pickup location" "$HOME_HTML" "Marine"
-has "signed-out visitors are asked to sign in" "$HOME_HTML" "Sign in to order"
+has "signed-out visitors are asked to sign in" "$HOME_HTML" 'class="button" href="/login"'
 
 echo ""
 echo "Grid builder"
@@ -203,7 +203,7 @@ curl -s -o /dev/null -b $M -c $M -X POST "$BASE/login" \
 
 MENU=$(curl -s -b $M -c $M "$BASE/")
 has "an unapproved member is told they are waiting" "$MENU" "waiting for an organiser"
-hasnt "and gets no add-to-cart form" "$MENU" "Add to cart"
+hasnt "and gets no add-to-cart form" "$MENU" 'action="/cart/add"'
 
 MEMBER_ID=$(curl -s -b $A -c $A "$BASE/admin/users" | grep -o '/admin/users/[0-9]*/wallet' | head -1 | grep -o '[0-9]\+')
 T=$(tok $A /admin/users)
@@ -211,7 +211,7 @@ curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/users/$MEMBER_ID" \
   -d "_token=$T" -d "name=Sam Member" -d "group_name=Youth" -d "role=member" -d "is_approved=1"
 
 MENU=$(curl -s -b $M -c $M "$BASE/")
-has "an approved member gets the order form" "$MENU" "Add to cart"
+has "an approved member gets the order form" "$MENU" 'action="/cart/add"'
 has "the name field is prefilled" "$MENU" 'value="Sam Member"'
 # Ids are prefixed per form now that fields are rendered from configuration, so
 # this matches the stable part: the id ends with the key, and the name is it.
@@ -451,8 +451,8 @@ echo "Front page layout"
 HOME_HTML=$(curl -s "$BASE/")
 GRIDS=$(echo "$HOME_HTML" | grep -c '<ul class="dishes"')
 want "the whole week is a single grid" "$GRIDS" "1"
-has "holding the Marine dish" "$HOME_HTML" 'dish__where">Marine'
-has "and the RCC one" "$HOME_HTML" 'dish__where">RCC'
+has "holding the Marine dish" "$(flat "$HOME_HTML")" 'dish__where"><span class="pill pill--past">Marine'
+has "and the RCC one" "$(flat "$HOME_HTML")" 'dish__where"><span class="pill pill--past">RCC'
 has "with the column count on it" "$HOME_HTML" 'style="--cols: 3"'
 
 echo ""
@@ -482,6 +482,104 @@ has "with nothing ordered yet" "$LATER" "No orders for this date"
 # A date that is not on the menu must not be trusted into the query.
 BOGUS=$(curl -s -b $A -c $A "$BASE/admin?date=not-a-date")
 has "a bogus date falls back to the next serving" "$BOGUS" "Cook list for Sunday 16 August"
+
+echo ""
+echo "Design"
+want "the design screen is there" "$(code $A /admin/design)" "200"
+DESIGN=$(curl -s -b $A -c $A "$BASE/admin/design")
+has "offering a starting look" "$DESIGN" 'name="preset" value="bold"'
+has "and a theme picker" "$DESIGN" 'name="design_theme"'
+has "listing the shipped theme" "$DESIGN" 'value="list"'
+
+# Defaults must emit nothing: the stylesheet already is the default look.
+hasnt "an untouched site adds no inline CSS" "$(curl -s "$BASE/")" "<style>"
+
+T=$(tok $A /admin/design)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/design" \
+  -d "_token=$T" -d "design_button=#aa3311" -d "design_brand_name=St Aidans Lunch"
+
+HOME_HTML=$(curl -s "$BASE/")
+has "a changed colour reaches the page" "$HOME_HTML" '\-\-button: #aa3311;'
+has "and only that colour" "$(flat "$HOME_HTML")" '<style>:root { --button: #aa3311; }'
+has "the site name reaches the header" "$HOME_HTML" "St Aidans Lunch"
+has "and the browser tab" "$HOME_HTML" "<title>.*St Aidans Lunch"
+
+# A colour box must not become a way to write arbitrary CSS.
+T=$(tok $A /admin/design)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/design" \
+  -d "_token=$T" -d "design_ink=#000; } body { display:none } :root { --x:1"
+hasnt "an injected rule is refused" "$(curl -s "$BASE/")" "display:none"
+
+echo ""
+echo "Themes"
+T=$(tok $A /admin/design)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/design" -d "_token=$T" -d "design_theme=list"
+HOME_HTML=$(curl -s "$BASE/")
+has "the theme stylesheet is linked" "$HOME_HTML" 'href="/theme.css'
+want "and served" "$(code $A /theme.css)" "200"
+has "with the theme's own rules" "$(curl -s "$BASE/theme.css")" "Compact list"
+has "while the chosen colour still applies" "$HOME_HTML" '\-\-button: #aa3311;'
+
+# A slug that is not an installed theme is refused outright, and the theme
+# already in use is left alone rather than being half-replaced.
+T=$(tok $A /admin/design)
+REFUSED=$(curl -s -L -b $A -c $A -X POST "$BASE/admin/design" -d "_token=$T" -d "design_theme=../../etc")
+has "a traversing slug is refused" "$REFUSED" "no theme called"
+has "and the working theme is untouched" "$(curl -s "$BASE/")" 'href="/theme.css'
+
+# Back to the built-in look for whatever runs after this.
+T=$(tok $A /admin/design)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/design" -d "_token=$T" -d "reset=1"
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/design" -d "_token=$(tok $A /admin/design)" -d "design_theme="
+
+echo ""
+echo "Dish pictures"
+# A real PNG, made here so the test carries no binary fixture. It goes in
+# data/ -- which is gitignored, and a relative path both PHP and curl can
+# resolve whichever platform they were built for. An absolute /tmp path is not:
+# on Windows the curl and PHP in use are native builds that cannot read one.
+IMG=data/e2e-dish.png
+EVIL=data/e2e-evil.jpg
+
+php -r '$i=imagecreatetruecolor(900,600); imagefill($i,0,0,imagecolorallocate($i,190,110,50)); imagepng($i,$argv[1]);' "$IMG" 2>/dev/null
+
+if [ -f "$IMG" ]; then
+  T=$(tok $A /admin/menu/1)
+  curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
+    -F "_token=$T" -F "id=1" -F "name=BBQ pork on rice" -F "location_id=1" -F "price=10.00" \
+    -F "status=published" -F "service_date=2026-08-16" \
+    -F "open_from=2026-01-01T00:00" -F "close_at=2027-01-01T00:00" \
+    -F "image=@$IMG;type=image/png"
+
+  has "an uploaded picture appears on the card" "$(curl -s "$BASE/")" 'class="dish__photo"'
+  has "under a name it was not given" "$(curl -s "$BASE/")" 'src="/assets/uploads/[0-9a-f]\{24\}\.png"'
+
+  # The same request shape, carrying a script instead.
+  printf '<?php echo "pwned"; ?>' > "$EVIL"
+  curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
+    -F "_token=$(tok $A /admin/menu/1)" -F "id=1" -F "name=BBQ pork on rice" -F "location_id=1" \
+    -F "price=10.00" -F "status=published" -F "service_date=2026-08-16" \
+    -F "open_from=2026-01-01T00:00" -F "close_at=2027-01-01T00:00" \
+    -F "image=@$EVIL;type=image/jpeg"
+
+  has "a script wearing a .jpg is refused" \
+    "$(curl -s -b $A -c $A "$BASE/admin/menu/1")" "not a picture"
+  has "and the real picture is still there" "$(curl -s "$BASE/")" 'class="dish__photo"'
+
+  # Removing it must leave the dish standing.
+  curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
+    -F "_token=$(tok $A /admin/menu/1)" -F "id=1" -F "name=BBQ pork on rice" -F "location_id=1" \
+    -F "price=10.00" -F "status=published" -F "service_date=2026-08-16" \
+    -F "open_from=2026-01-01T00:00" -F "close_at=2027-01-01T00:00" -F "remove_image=1"
+
+  HOME_HTML=$(curl -s "$BASE/")
+  hasnt "removing the picture takes it off the card" "$HOME_HTML" 'class="dish__photo"'
+  has "and the dish is still on the menu" "$HOME_HTML" "BBQ pork on rice"
+
+  rm -f "$IMG" "$EVIL"
+else
+  echo "  --    skipped: no GD to make a test image with"
+fi
 
 echo ""
 echo "Ways of signing in"

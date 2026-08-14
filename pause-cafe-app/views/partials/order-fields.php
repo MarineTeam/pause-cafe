@@ -51,7 +51,7 @@ foreach ( $of['fields'] as $ofKey => $ofField ) :
 				'label'    => '',
 				'required' => (bool) $ofField['required'],
 			);
-			include __DIR__ . '/group-select.php';
+			include \PauseCafe\View::locate( 'partials/group-select' );
 			?>
 
 		<?php elseif ( 'textarea' === $ofField['type'] ) : ?>

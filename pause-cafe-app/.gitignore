@@ -4,3 +4,7 @@ data/
 *.sqlite-wal
 *.sqlite-shm
 zeffy.log
+
+# Pictures organisers upload. Site content, not source -- and they are the one
+# thing here that a deploy must not overwrite.
+public/assets/uploads/

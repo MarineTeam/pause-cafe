@@ -2,7 +2,7 @@
 use PauseCafe\Blackouts;
 use PauseCafe\Schedule;
 
-include __DIR__ . '/_tabs.php';
+include \PauseCafe\View::locate( 'admin/_tabs' );
 
 $total = 0;
 

@@ -299,6 +299,7 @@ class Menu {
 			// NULL is the default schedule, whose rules live in settings.
 			'schedule_id'  => ( (int) ( $data['schedule_id'] ?? 0 ) ) > 0 ? (int) $data['schedule_id'] : null,
 			'field_rules'  => (string) ( $data['field_rules'] ?? '' ),
+			'image_path'   => (string) ( $data['image_path'] ?? '' ),
 		);
 
 		$pdo = Database::pdo();

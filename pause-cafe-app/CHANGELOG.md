@@ -8,6 +8,57 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.11.0 — 2026-08-14
+
+### Added
+
+- **A Design screen.** Colours, type, corner rounding, card style, site name,
+  logo and dark mode, for the whole site at once — including the organiser
+  screens, which pick it up without having been touched. Three starting points:
+  Plain, Bold and Warm paper.
+- **Themes.** A folder under `themes/` with a manifest, an optional stylesheet
+  and optional templates. Anything a theme does not provide falls through to the
+  built-in version. `themes/list/` ships as a working example, turning the card
+  grid into one dish per row.
+- **Pictures on dishes**, optional, with the card falling back to a typographic
+  layout when there is none. Uploads are re-encoded and scaled, so a photo
+  straight off a phone is fine.
+- **A new default look**, the Bold one: tinted cards with no outline, rounded
+  corners and a green accent. The old look is one click away under Plain.
+- **The front page says whether ordering is open**, once above the week rather
+  than implied by each card. Sold out and closed are pills now, not warning
+  boxes.
+
+### Changed
+
+- `views/partials/dish-card.php` is new — one dish, lifted out of `menu.php`.
+  This is the piece a theme is meant to override, and extracting it means a
+  theme can change how a dish looks without copying the ordering rules, the
+  field resolution or the cutoff handling.
+- Templates locate their partials through `View::locate()` rather than
+  `__DIR__`, which is what lets an overridden template still find the built-in
+  pieces around it.
+- The site name is a Design setting. It used to be the mail-from name, which is
+  a strange place for it; that is still the fallback, so nothing changes for an
+  install that set it there.
+
+### Notes
+
+- **A theme's copy of a template stops tracking the original.** The standard
+  child-theme trade-off, and the reason the shipped example is CSS only.
+- `themes/` is not web-reachable and must not be: it is PHP with full access to
+  the app. Its stylesheet is served by a route that reads one known filename,
+  and the stored theme name is matched against the folders that exist rather
+  than used to build a path.
+- Design values are validated before they reach the page. A colour box lands
+  inside a `<style>` block, where a stray brace would let the rest of the value
+  become arbitrary CSS, so anything that is not a hex colour is dropped.
+- `Design::css()` emits only what differs from the default, which couples the
+  defaults to the `:root` block in `app.css`. A test asserts the two agree —
+  without it, a disagreement would silently show the stylesheet's value.
+- Uploads go in `public/assets/uploads/`, now gitignored. They are content, and
+  a deploy must not overwrite them.
+
 ## 0.10.3 — 2026-08-14
 
 ### Fixed

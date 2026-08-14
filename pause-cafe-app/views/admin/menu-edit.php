@@ -3,7 +3,7 @@ use PauseCafe\Csrf;
 use PauseCafe\Money;
 use PauseCafe\Schedule;
 
-include __DIR__ . '/_tabs.php';
+include \PauseCafe\View::locate( 'admin/_tabs' );
 
 $value = static function ( string $key, $fallback = '' ) use ( $item ) {
 	return $item[ $key ] ?? $fallback;
@@ -22,7 +22,8 @@ $toInput = static function ( string $stored ): string {
 	<p class="muted"><?= e( $item['window']->message() ) ?></p>
 <?php endif; ?>
 
-<form method="post" action="/admin/menu/save">
+<?php // enctype is what carries the picture; without it the file silently never arrives. ?>
+<form method="post" action="/admin/menu/save" enctype="multipart/form-data">
 	<?= Csrf::field() ?>
 	<?php if ( $item ) : ?>
 		<input type="hidden" name="id" value="<?= (int) $item['id'] ?>">
@@ -60,6 +61,28 @@ $toInput = static function ( string $stored ): string {
 		<div class="field">
 			<label for="description">Description</label>
 			<textarea id="description" name="description" rows="2"><?= e( $value( 'description' ) ) ?></textarea>
+		</div>
+
+		<div class="field">
+			<label for="image">Picture <span class="muted">(optional)</span></label>
+
+			<?php $currentImage = $value( 'image_path' ); ?>
+
+			<?php if ( '' !== $currentImage ) : ?>
+				<p><img src="<?= e( $currentImage ) ?>" alt="" style="max-width:220px; border-radius:var(--radius)"></p>
+				<label style="font-weight:400">
+					<input type="checkbox" name="remove_image" value="1">
+					Remove this picture
+				</label>
+			<?php endif; ?>
+
+			<input type="file" id="image" name="image" accept="image/jpeg,image/png,image/gif,image/webp">
+
+			<p class="help">
+				JPEG, PNG, GIF or WebP, under 6&nbsp;MB. It is resized on upload, so a
+				photo straight off a phone is fine.
+				<?= '' !== $currentImage ? 'Choosing a new one replaces the current picture.' : 'A dish without one still looks right.' ?>
+			</p>
 		</div>
 
 		<div class="field">
@@ -150,7 +173,7 @@ $toInput = static function ( string $stored ): string {
 			'note'  => 'Overrides this dish only. Inherit follows its schedule, which follows the site default.',
 		);
 
-		include __DIR__ . '/../partials/field-rules.php';
+		include \PauseCafe\View::locate( 'partials/field-rules' );
 		?>
 	</div>
 
