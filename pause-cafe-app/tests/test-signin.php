@@ -20,7 +20,9 @@ fresh_database();
 require dirname( __DIR__ ) . '/src/bootstrap.php';
 
 use PauseCafe\Identities;
+use PauseCafe\LoginAttempts;
 use PauseCafe\LoginTokens;
+use PauseCafe\Notifications;
 use PauseCafe\Mail\LogTransport;
 use PauseCafe\Mailer;
 use PauseCafe\Schedule;
@@ -618,6 +620,176 @@ check_throws(
 	static fn() => SignIn::resolve( 'supabase' ),
 	'not set up'
 );
+
+/* =========================================================================
+ * Guessing passwords
+ * ====================================================================== */
+
+echo "\nGuessing at a password gets slower\n";
+
+/*
+ * Deliberately not UTC.
+ *
+ * The first version of this stored the stamp in local time and read it back as
+ * UTC, so the deadline landed hours in the past and the wait came out negative
+ * -- it never locked anything. Every one of these assertions passed anyway,
+ * because the clock was frozen to UTC and the two readings agreed. A clock
+ * frozen to a zone with an offset is what makes the difference visible.
+ */
+Schedule::freeze( new DateTimeImmutable( '2026-08-13 12:00:00', new DateTimeZone( 'America/Vancouver' ) ) );
+
+LoginAttempts::clearAll();
+
+$guess = static fn( string $email = 'ruth@example.org', string $ip = '198.51.100.7' )
+	=> LoginAttempts::retryAfter( $email, $ip );
+
+check( 'a first attempt is free', $guess(), 0 );
+
+for ( $i = 0; $i < 4; $i++ ) {
+	LoginAttempts::record( 'ruth@example.org', '198.51.100.7' );
+}
+
+check( 'and so is the fifth', $guess(), 0 );
+
+LoginAttempts::record( 'ruth@example.org', '198.51.100.7' );
+
+check( 'the sixth has to wait', $guess() > 0, true );
+check( 'for about a quarter of an hour', $guess() > 800 && $guess() <= 900, true );
+
+echo "\nThe wait says nothing about who has an account\n";
+
+/*
+ * The address is throttled as typed. Were only real accounts counted, the
+ * difference between "wrong password" and "too many attempts" would answer
+ * whether an address is a member here.
+ */
+LoginAttempts::clearAll();
+
+for ( $i = 0; $i < 5; $i++ ) {
+	LoginAttempts::record( 'nobody-at-all@example.org', '198.51.100.7' );
+}
+
+check(
+	'an address with no account is throttled too',
+	LoginAttempts::retryAfter( 'nobody-at-all@example.org', '203.0.113.9' ) > 0,
+	true
+);
+
+echo "\nOne address being locked does not lock another\n";
+
+LoginAttempts::clearAll();
+
+for ( $i = 0; $i < 5; $i++ ) {
+	LoginAttempts::record( 'ruth@example.org', '198.51.100.7' );
+}
+
+check( 'the guessed-at address waits', $guess() > 0, true );
+check( 'somebody else on the same network does not', $guess( 'flood@example.org' ), 0 );
+
+echo "\nBut one machine working through many accounts is caught\n";
+
+LoginAttempts::clearAll();
+
+for ( $i = 0; $i < 40; $i++ ) {
+	LoginAttempts::record( 'victim' . $i . '@example.org', '198.51.100.7' );
+}
+
+check(
+	'an address never guessed at is held back by the machine',
+	LoginAttempts::retryAfter( 'someone-new@example.org', '198.51.100.7' ) > 0,
+	true
+);
+
+check(
+	'while the same address from elsewhere is fine',
+	LoginAttempts::retryAfter( 'someone-new@example.org', '203.0.113.9' ),
+	0
+);
+
+echo "\nNothing stays locked\n";
+
+LoginAttempts::clearAll();
+
+for ( $i = 0; $i < 5; $i++ ) {
+	LoginAttempts::record( 'ruth@example.org', '198.51.100.7' );
+}
+
+check( 'locked now', $guess() > 0, true );
+
+Schedule::freeze( new DateTimeImmutable( '2026-08-13 12:16:00', new DateTimeZone( 'America/Vancouver' ) ) );
+check( 'and free again a quarter of an hour later', $guess(), 0 );
+
+Schedule::freeze( new DateTimeImmutable( '2026-08-13 12:00:00', new DateTimeZone( 'America/Vancouver' ) ) );
+
+echo "\nAnd signing in clears the slate\n";
+
+LoginAttempts::clearAll();
+
+for ( $i = 0; $i < 5; $i++ ) {
+	LoginAttempts::record( 'ruth@example.org', '198.51.100.7' );
+}
+
+check( 'locked after five', $guess() > 0, true );
+
+LoginAttempts::forgive( 'ruth@example.org' );
+
+check( 'getting in forgives them', $guess(), 0 );
+
+// The command-line way back, for somebody who cannot wait.
+for ( $i = 0; $i < 5; $i++ ) {
+	LoginAttempts::record( 'ruth@example.org', '198.51.100.7' );
+}
+
+LoginAttempts::clearAll();
+
+check( 'and the rescue tool clears everything', $guess(), 0 );
+
+/* =========================================================================
+ * The address the site uses for itself
+ * ====================================================================== */
+
+echo "\nLinks in email do not trust the browser\n";
+
+$_SERVER['HTTP_HOST'] = 'lunch.example.org';
+unset( $_SERVER['HTTPS'], $_SERVER['HTTP_X_FORWARDED_PROTO'] );
+
+Notifications::configure( '', false );
+check( 'unpinned, it falls back to the request', Notifications::baseUrl(), 'http://lunch.example.org' );
+check( 'and says it is not pinned', Notifications::urlIsPinned(), false );
+
+/*
+ * The reason this matters: the sign-in link carries a one-time token, and an
+ * unpinned address is whatever the caller claimed to be asking.
+ */
+$_SERVER['HTTP_HOST'] = 'elsewhere.example';
+check( 'which a caller can choose', Notifications::baseUrl(), 'http://elsewhere.example' );
+
+Notifications::configure( 'https://lunch.example.org', false );
+check( 'pinned, the header is ignored', Notifications::baseUrl(), 'https://lunch.example.org' );
+check( 'and it says so', Notifications::urlIsPinned(), true );
+
+Notifications::configure( 'https://lunch.example.org/', false );
+check( 'a trailing slash is trimmed, so links do not double up', Notifications::baseUrl(), 'https://lunch.example.org' );
+
+echo "\nAnd it works out HTTPS behind a proxy\n";
+
+$_SERVER['HTTP_HOST'] = 'lunch.example.org';
+
+Notifications::configure( '', true );
+check( 'the config flag is enough', Notifications::baseUrl(), 'https://lunch.example.org' );
+
+Notifications::configure( '', false );
+$_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+check( 'so is the proxy header', Notifications::baseUrl(), 'https://lunch.example.org' );
+
+unset( $_SERVER['HTTP_X_FORWARDED_PROTO'] );
+$_SERVER['HTTPS'] = 'on';
+check( 'so is the usual one', Notifications::baseUrl(), 'https://lunch.example.org' );
+
+$_SERVER['HTTPS'] = 'off';
+check( 'and "off" is not mistaken for yes', Notifications::baseUrl(), 'http://lunch.example.org' );
+
+unset( $_SERVER['HTTPS'] );
 
 if ( is_file( $logPath ) ) {
 	unlink( $logPath );

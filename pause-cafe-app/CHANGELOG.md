@@ -8,6 +8,63 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.12.0 — 2026-08-14
+
+Two security fixes from an audit of the whole app, plus one thing to set when
+you deploy.
+
+### Fixed
+
+- **Passwords could be guessed at as fast as the server would answer.** Nothing
+  counted failed sign-ins, so bcrypt's tenth of a second was the only cost —
+  about ten guesses a second, indefinitely. The organiser rescue was the worst
+  of it: it only ever admits an organiser, so every success there is an account
+  that can move money.
+
+  Five wrong guesses against one address now means a fifteen-minute wait, and
+  forty from one machine does the same. Both expire on their own, signing in
+  clears them, and `tools/rescue.php` wipes them — a lockout that needed a
+  database editor to undo would undermine the whole point of that tool.
+
+- **Links in email were built from the browser's `Host` header.** Ask for a
+  sign-in link while claiming to be another host, and the link emailed to the
+  account holder points there, carrying a working one-time token. Click it and
+  somebody else has the session. The address now comes from `site_url` in
+  `config.php` when set, and the Sign-in screen warns when emailed links are
+  switched on without it.
+
+- **`baseUrl()` ignored `'https' => true`**, so behind a TLS-terminating proxy
+  every link the app emailed said `http://`. It now takes HTTPS from the config
+  flag, `$_SERVER['HTTPS']`, or `X-Forwarded-Proto` — any of them can say yes,
+  none can say no.
+
+### To do when you deploy
+
+Set **`site_url`** in `config.php` to the site's own address, and **`https`** to
+true once you are behind TLS. The first protects emailed sign-in tokens; the
+second also marks the session cookie secure.
+
+### Notes
+
+- Throttling counts the address as typed, whether or not it has an account.
+  Counting only real ones would turn the wait into an answer to "is this person
+  a member here?"
+- The per-machine limit is deliberately loose. On shared hosting every visitor
+  can arrive from one proxy address, and a tight limit there would lock out the
+  congregation because one person mistyped.
+- `X-Forwarded-For` is ignored for throttling. A caller sets it, so an attacker
+  could put a fresh value on every request — a per-machine limit built on it
+  would be no limit at all, while looking like one.
+
+### Audited and found clean
+
+For the record, since these were checked rather than assumed: all 70 routes
+(every `/admin` route guarded, every POST carrying CSRF except the Zeffy
+webhook, which uses a shared secret instead); no user input reaching a SQL
+string; the three places that build HTML in PHP all escaping; `/orders/{id}`
+checking ownership and answering 404 rather than 403; and every secret
+comparison either constant-time or bcrypt.
+
 ## 0.11.1 — 2026-08-14
 
 ### Fixed

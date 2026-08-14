@@ -29,11 +29,52 @@ class Notifications {
 		return '' !== $brand ? $brand : Mailer::fromName();
 	}
 
-	public static function baseUrl(): string {
-		$scheme = ! empty( $_SERVER['HTTPS'] ) && 'off' !== $_SERVER['HTTPS'] ? 'https' : 'http';
-		$host   = (string) ( $_SERVER['HTTP_HOST'] ?? '' );
+	private static string $siteUrl = '';
 
-		return '' !== $host ? $scheme . '://' . $host : '';
+	private static bool $https = false;
+
+	public static function configure( string $siteUrl, bool $https ): void {
+		self::$siteUrl = rtrim( trim( $siteUrl ), '/' );
+		self::$https   = $https;
+	}
+
+	/**
+	 * Where this site lives, for building links that leave it.
+	 *
+	 * Prefers the address in config.php, and that preference is the important
+	 * part. Falling back on the Host header means trusting a value the caller
+	 * sends: ask for a sign-in link with `Host: elsewhere.example` and the link
+	 * emailed to the account holder points at elsewhere.example, carrying a
+	 * working one-time token. They click it, and somebody else has their
+	 * session. Pinning the address closes that; the fallback stays only so an
+	 * install that has not been configured yet still functions.
+	 *
+	 * The scheme has three sources because a host behind a proxy sees none of
+	 * the ones you would expect. Any of them saying HTTPS is believed; none of
+	 * them can talk it down, because emitting https for an http site is a
+	 * broken link while the reverse leaks a token.
+	 */
+	public static function baseUrl(): string {
+		if ( '' !== self::$siteUrl ) {
+			return self::$siteUrl;
+		}
+
+		$host = (string) ( $_SERVER['HTTP_HOST'] ?? '' );
+
+		if ( '' === $host ) {
+			return '';
+		}
+
+		$secure = self::$https
+			|| ( ! empty( $_SERVER['HTTPS'] ) && 'off' !== $_SERVER['HTTPS'] )
+			|| 'https' === strtolower( (string) ( $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' ) );
+
+		return ( $secure ? 'https' : 'http' ) . '://' . $host;
+	}
+
+	/** Whether the address was pinned, rather than taken from the request. */
+	public static function urlIsPinned(): bool {
+		return '' !== self::$siteUrl;
 	}
 
 	/**

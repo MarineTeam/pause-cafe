@@ -18,6 +18,7 @@ use PauseCafe\Csrf;
 use PauseCafe\Database;
 use PauseCafe\Groups;
 use PauseCafe\Kitchen;
+use PauseCafe\LoginAttempts;
 use PauseCafe\LoginTokens;
 use PauseCafe\Menu;
 use PauseCafe\MenuFields;
@@ -285,14 +286,41 @@ $router->post(
 			View::redirect( '/login' );
 		}
 
-		$finishSignIn(
-			SignIn::resolve( $id )->start(
-				array(
-					'email'    => $post( 'email' ),
-					'password' => (string) ( $_POST['password'] ?? '' ),
-				)
+		$email = $post( 'email' );
+
+		/*
+		 * Only the password method is throttled here. The others cost an
+		 * attacker nothing to fail at and give them nothing for succeeding at
+		 * random -- and the emailed link has a limit of its own, on how many
+		 * can be sent rather than how many can be guessed.
+		 */
+		$guarded = 'password' === $id;
+
+		if ( $guarded ) {
+			$wait = LoginAttempts::retryAfter( $email, LoginAttempts::ip() );
+
+			if ( $wait > 0 ) {
+				View::flash( 'error', LoginAttempts::message( $wait ) );
+				View::redirect( '/login' );
+			}
+		}
+
+		$outcome = SignIn::resolve( $id )->start(
+			array(
+				'email'    => $email,
+				'password' => (string) ( $_POST['password'] ?? '' ),
 			)
 		);
+
+		if ( $guarded ) {
+			if ( $outcome->isAuthenticated() ) {
+				LoginAttempts::forgive( $email );
+			} else {
+				LoginAttempts::record( $email, LoginAttempts::ip() );
+			}
+		}
+
+		$finishSignIn( $outcome );
 	}
 );
 
@@ -314,12 +342,33 @@ $router->post(
 			View::redirect( '/login' );
 		}
 
-		$user = Users::authenticate( $post( 'email' ), (string) ( $_POST['password'] ?? '' ) );
+		$email = $post( 'email' );
+
+		/*
+		 * Throttled harder in spirit than the front door, because this one only
+		 * ever admits an organiser: every success here is an account that can
+		 * move money, so it is the door worth guessing at.
+		 */
+		$wait = LoginAttempts::retryAfter( $email, LoginAttempts::ip() );
+
+		if ( $wait > 0 ) {
+			View::flash( 'error', LoginAttempts::message( $wait ) );
+			View::redirect( '/login?rescue=1' );
+		}
+
+		$user = Users::authenticate( $email, (string) ( $_POST['password'] ?? '' ) );
 
 		if ( ! $user || ! Users::isAdmin( $user ) ) {
+			// A member's correct password counts as a failure here too. It did
+			// not open this door, and letting it reset the counter would give
+			// anyone with any account an unlimited supply of guesses.
+			LoginAttempts::record( $email, LoginAttempts::ip() );
+
 			View::flash( 'error', 'That email and password did not match an organiser account.' );
 			View::redirect( '/login?rescue=1' );
 		}
+
+		LoginAttempts::forgive( $email );
 
 		Auth::login( $user );
 		View::redirect( '/admin' );

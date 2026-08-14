@@ -14,7 +14,7 @@ each run and never touching `data/`.
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
 php -d extension=php_pdo_sqlite tests/test-app.php        # 332 assertions
-php -d extension=php_pdo_sqlite tests/test-signin.php     # 96 assertions
+php -d extension=php_pdo_sqlite tests/test-signin.php     # 120 assertions
 php -d extension=php_pdo_sqlite tests/test-design.php     # 67 assertions
 ```
 
@@ -77,6 +77,16 @@ organiser has actually signed in through a provider, that a configured provider
 does not count, that a *member* signing in that way does not count either, and
 that deleting the organiser who proved it withdraws the proof.
 
+Then the two things an audit turned up. Throttling: five wrong guesses at one
+address means a wait, forty from one machine means a wait, one locked address
+does not lock another, an address with no account is throttled exactly the same
+(otherwise the wait answers "is this person a member?"), the lock expires on its
+own, and both signing in and the rescue tool clear it. And the address the site
+uses for itself: pinned it ignores the `Host` header, unpinned it does not —
+which is the whole reason to pin it, since that URL carries a one-time sign-in
+token into somebody's inbox — plus HTTPS being recognised from the config flag,
+`$_SERVER['HTTPS']` and `X-Forwarded-Proto`, with `off` not mistaken for yes.
+
 `fixtures-keys.php` holds three throwaway RSA keys. They are fixed rather than
 generated because `openssl_pkey_new()` needs an `openssl.cnf` that many PHP
 builds cannot find — including the one this was written on — and a test that
@@ -115,7 +125,7 @@ covered over HTTP in `e2e.sh`.
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 207 assertions
+bash tests/e2e.sh                                          # 213 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token
