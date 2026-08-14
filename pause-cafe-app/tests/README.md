@@ -13,7 +13,7 @@ each run and never touching `data/`.
 
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
-php -d extension=php_pdo_sqlite tests/test-app.php        # 332 assertions
+php -d extension=php_pdo_sqlite tests/test-app.php        # 338 assertions
 php -d extension=php_pdo_sqlite tests/test-signin.php     # 120 assertions
 php -d extension=php_pdo_sqlite tests/test-design.php     # 67 assertions
 ```
@@ -125,7 +125,7 @@ covered over HTTP in `e2e.sh`.
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 213 assertions
+bash tests/e2e.sh                                          # 218 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token

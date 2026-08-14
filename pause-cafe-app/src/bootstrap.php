@@ -6,7 +6,7 @@
 declare(strict_types=1);
 
 // Kept in step with CHANGELOG.md.
-defined( 'PAUSE_CAFE_VERSION' ) || define( 'PAUSE_CAFE_VERSION', '0.12.0' );
+defined( 'PAUSE_CAFE_VERSION' ) || define( 'PAUSE_CAFE_VERSION', '0.12.1' );
 
 spl_autoload_register(
 	static function ( string $class ): void {

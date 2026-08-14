@@ -1047,6 +1047,43 @@ check( 'as a draft', Menu::itemBySlot( '2026-11-15', $marine )['status'], 'draft
 check( 'and clearing again does nothing', MenuBuilder::save( array( '2026-11-15' => array( $marine => '' ) ) )['drafted'], 0 );
 check( 'while retyping it republishes', MenuBuilder::save( array( '2026-11-15' => array( $marine => 'Leek soup' ) ) )['updated'], 1 );
 
+echo "\nA dish unpublished on its own screen stays unpublished\n";
+
+/*
+ * The trap: saving the grid forces every named cell to published, so a dish
+ * somebody deliberately unpublished would come back the next time anyone edited
+ * a different week of the same month. What stops it is the builder rendering an
+ * unpublished dish as a placeholder rather than a value, so its cell submits
+ * empty -- these assertions are about the empty cell leaving it alone.
+ */
+$soup = Menu::item( (int) Menu::itemBySlot( '2026-11-15', $marine )['id'] );
+
+Menu::save( array_merge( $soup, array( 'status' => 'draft' ) ), (int) $soup['id'] );
+
+check( 'it starts unpublished', Menu::itemBySlot( '2026-11-15', $marine )['status'], 'draft' );
+
+// A month save that touches a different week. The unpublished cell arrives
+// empty, exactly as the grid renders it.
+$tally = MenuBuilder::save(
+	array(
+		'2026-11-15' => array( $marine => '' ),
+		'2026-11-08' => array( $marine => 'Shepherd pie' ),
+	)
+);
+
+check( 'editing elsewhere in the month changes nothing else', $tally['updated'], 0 );
+check( 'and it is still unpublished', Menu::itemBySlot( '2026-11-15', $marine )['status'], 'draft' );
+check( 'nothing was drafted twice', $tally['drafted'], 0 );
+
+// And the deliberate way back still works.
+check(
+	'typing the name back republishes it',
+	MenuBuilder::save( array( '2026-11-15' => array( $marine => 'Leek soup' ) ) )['updated'],
+	1
+);
+
+check( 'published again', Menu::itemBySlot( '2026-11-15', $marine )['status'], 'published' );
+
 echo "\nManual mode takes a window per row\n";
 
 Settings::set( 'active_mode', Schedule::MODE_MANUAL );

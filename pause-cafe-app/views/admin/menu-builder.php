@@ -78,13 +78,25 @@ $toInput = static function ( string $stored ): string {
 				</thead>
 				<tbody>
 					<?php foreach ( $locations as $location ) : ?>
-						<?php $item = $live[ (int) $location['id'] ] ?? null; ?>
+						<?php
+						$item = $live[ (int) $location['id'] ] ?? null;
+
+						// Same reasoning as the month grid below: an unpublished
+						// dish is shown but not submitted, so saving this row
+						// cannot put it back on the menu by itself.
+						$isDraft = $item && 'draft' === $item['status'];
+						?>
 						<tr>
 							<td><strong><?= e( $location['name'] ) ?></strong></td>
 							<td>
 								<input type="text" list="dish-names" style="width:100%"
 									name="dish[<?= (int) $location['id'] ?>]"
-									value="<?= e( $item['name'] ?? '' ) ?>" placeholder="Start typing…">
+									value="<?= e( $isDraft ? '' : ( $item['name'] ?? '' ) ) ?>"
+									placeholder="<?= $isDraft ? e( $item['name'] ) . ' (unpublished)' : 'Start typing…' ?>">
+
+								<?php if ( $isDraft ) : ?>
+									<span class="pill pill--past" style="font-size:11px">Unpublished</span>
+								<?php endif; ?>
 							</td>
 						</tr>
 					<?php endforeach; ?>
@@ -183,14 +195,35 @@ $toInput = static function ( string $stored ): string {
 								<?php endif; ?>
 
 								<?php foreach ( $locations as $location ) : ?>
-									<?php $item = $cells[ (int) $location['id'] ] ?? null; ?>
+									<?php
+									$item = $cells[ (int) $location['id'] ] ?? null;
+
+									/*
+									 * An unpublished dish shows as a placeholder rather than a
+									 * value, and that distinction is the whole point: a value
+									 * gets submitted with the rest of the month, and saving the
+									 * grid forces every named cell to published. Somebody who
+									 * unpublished a dish and then edited a different week would
+									 * find it quietly back on the menu.
+									 *
+									 * As a placeholder it is still visible, still says what it
+									 * is, and simply is not sent. Typing the name in republishes
+									 * it, which is the deliberate way back.
+									 */
+									$isDraft = $item && 'draft' === $item['status'];
+									?>
 									<td>
 										<?php if ( $past ) : ?>
 											<?= $item ? e( $item['name'] ) : '<span class="muted">—</span>' ?>
 										<?php else : ?>
 											<input type="text" list="dish-names" style="width:100%"
 												name="dish[<?= e( $date ) ?>][<?= (int) $location['id'] ?>]"
-												value="<?= e( $item['name'] ?? '' ) ?>" placeholder="Start typing…">
+												value="<?= e( $isDraft ? '' : ( $item['name'] ?? '' ) ) ?>"
+												placeholder="<?= $isDraft ? e( $item['name'] ) . ' (unpublished)' : 'Start typing…' ?>">
+
+											<?php if ( $isDraft ) : ?>
+												<span class="pill pill--past" style="font-size:11px">Unpublished</span>
+											<?php endif; ?>
 
 											<?php if ( $item ) : ?>
 												<a class="pclm-edit-link" style="font-size:12px"
