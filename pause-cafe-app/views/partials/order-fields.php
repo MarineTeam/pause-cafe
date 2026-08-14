@@ -7,9 +7,12 @@
  *   values  current answers, keyed by field key
  *   prefix  unique string for input ids, since a page shows many of these
  *   labels  false to render bare controls for a compact row
+ *   group   optional name to nest the inputs under, e.g. "line[2]"
  *
- * Field keys are used verbatim as input names, which is what lets
- * MenuFields::collect() read them back without knowing what they are.
+ * Field keys are used as input names, which is what lets
+ * MenuFields::collect() read them back without knowing what they are. With
+ * `group` set they become group[key] instead, so one form can carry several
+ * sets at once -- which is how the cart submits every line together.
  */
 
 use PauseCafe\Groups;
@@ -20,12 +23,14 @@ $of = array_merge(
 		'values' => array(),
 		'prefix' => 'f',
 		'labels' => true,
+		'group'  => '',
 	),
 	$of ?? array()
 );
 
 foreach ( $of['fields'] as $ofKey => $ofField ) :
 	$ofId    = $of['prefix'] . '-' . $ofKey;
+	$ofName  = '' !== $of['group'] ? $of['group'] . '[' . $ofKey . ']' : $ofKey;
 	$ofValue = (string) ( $of['values'][ $ofKey ] ?? '' );
 	$ofReq   = $ofField['required'] ? 'required' : '';
 	?>
@@ -45,7 +50,7 @@ foreach ( $of['fields'] as $ofKey => $ofField ) :
 			// Falls through to the managed group list, which renders nothing at
 			// all when no groups have been set up.
 			$gs = array(
-				'name'     => $ofKey,
+				'name'     => $ofName,
 				'id'       => $ofId,
 				'value'    => $ofValue,
 				'label'    => '',
@@ -56,12 +61,12 @@ foreach ( $of['fields'] as $ofKey => $ofField ) :
 
 		<?php elseif ( 'textarea' === $ofField['type'] ) : ?>
 
-			<textarea id="<?= e( $ofId ) ?>" name="<?= e( $ofKey ) ?>" rows="2" maxlength="500"
+			<textarea id="<?= e( $ofId ) ?>" name="<?= e( $ofName ) ?>" rows="2" maxlength="500"
 				placeholder="<?= e( $ofField['placeholder'] ) ?>" <?= $ofReq ?>><?= e( $ofValue ) ?></textarea>
 
 		<?php elseif ( 'select' === $ofField['type'] ) : ?>
 
-			<select id="<?= e( $ofId ) ?>" name="<?= e( $ofKey ) ?>" <?= $ofReq ?>>
+			<select id="<?= e( $ofId ) ?>" name="<?= e( $ofName ) ?>" <?= $ofReq ?>>
 				<?php if ( ! $ofField['required'] ) : ?>
 					<option value="">— None —</option>
 				<?php endif; ?>
@@ -75,14 +80,14 @@ foreach ( $of['fields'] as $ofKey => $ofField ) :
 		<?php elseif ( 'checkbox' === $ofField['type'] ) : ?>
 
 			<label style="font-weight:400">
-				<input type="checkbox" id="<?= e( $ofId ) ?>" name="<?= e( $ofKey ) ?>" value="1"
+				<input type="checkbox" id="<?= e( $ofId ) ?>" name="<?= e( $ofName ) ?>" value="1"
 					<?= '' !== $ofValue ? 'checked' : '' ?>>
 				<?= e( $ofField['placeholder'] ?: 'Yes' ) ?>
 			</label>
 
 		<?php else : ?>
 
-			<input type="text" id="<?= e( $ofId ) ?>" name="<?= e( $ofKey ) ?>" maxlength="200"
+			<input type="text" id="<?= e( $ofId ) ?>" name="<?= e( $ofName ) ?>" maxlength="200"
 				value="<?= e( $ofValue ) ?>" placeholder="<?= e( $ofField['placeholder'] ) ?>" <?= $ofReq ?>>
 
 		<?php endif; ?>

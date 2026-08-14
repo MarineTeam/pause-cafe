@@ -253,11 +253,25 @@ has "the cart shows the dish" "$CART" "BBQ pork on rice"
 has "with the line total" "$CART" '\$20\.00'
 has "and keeps the note" "$CART" 'value="no onions"'
 
+has "the line fields are nested under the line" "$CART" 'name="line\[0\]\[note\]"'
+has "and the whole cart is one form" "$CART" 'action="/checkout"'
+
 T=$(echo "$CART" | grep -o 'name="_token" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"$//')
-# Asserting the status matters: a fatal here returns 500 and every later
+
+# The bug this guards: a note edited on the cart page and never separately
+# saved. The cart is one form, so Place order carries every line's answers --
+# it used to carry none of them, and whatever had been typed was dropped
+# without a word. Note the changed value: it has to beat the one from add.
+#
+# Asserting the status matters too: a fatal here returns 500 and every later
 # assertion just sees an empty database rather than the real cause.
 CO=$(curl -s -o /dev/null -w '%{http_code}' -b $M -c $M -X POST "$BASE/checkout" \
-  -d "_token=$T" -d "order_note=Side door please")
+  -d "_token=$T" -d "order_note=Side door please" \
+  -d "line[0][qty]=2" \
+  --data-urlencode "line[0][person_name]=Sam" \
+  --data-urlencode "line[0][group_name]=Youth" \
+  --data-urlencode "line[0][note]=no onions and extra sauce" \
+  --data-urlencode "line[0][allergies]=Peanuts")
 want "checkout redirects rather than erroring" "$CO" "302"
 
 ACCOUNT=$(curl -s -b $M -c $M "$BASE/account")
@@ -332,8 +346,11 @@ hasnt "and shows no orders" "$LOCKED" "BBQ pork on rice"
 
 KITCHEN=$(curl -s -b $A -c $A "$BASE/kitchen?range=all")
 has "an organiser sees the table" "$KITCHEN" "BBQ pork on rice"
-has "with the line note" "$KITCHEN" "no onions"
+# Both notes, and labelled, so a cook can tell which is which on a printout.
+has "with the meal note" "$KITCHEN" "no onions and extra sauce"
 has "and the order note" "$KITCHEN" "Side door please"
+has "the meal one is tagged" "$(flat "$KITCHEN")" 'note--meal"> <span class="note__tag">This meal</span>'
+has "and the order one too" "$(flat "$KITCHEN")" 'note--order"> <span class="note__tag">Whole order</span>'
 has "the name on the meal" "$KITCHEN" "Sam"
 has "the group" "$KITCHEN" "Youth"
 has "the custom field reaches the cook list" "$KITCHEN" "Allergies: Peanuts"
@@ -352,8 +369,13 @@ has "filtering by group works" \
   "$(curl -s -b $A -c $A "$BASE/kitchen?range=all&group=Seniors")" "Pay later pasta"
 
 CSV=$(curl -s -b $A -c $A "$BASE/kitchen/export?range=all")
-has "the CSV carries the columns asked for" "$CSV" "Date,Location,Dish,Qty,Name,Group,Payment,Paid,Notes"
-has "and the note" "$CSV" "no onions"
+has "the CSV carries the columns asked for" "$CSV" "Date,Location,Dish,Qty,Name,Group,Payment,Paid"
+# One column each, so a spreadsheet can tell a note about a meal from a note
+# about the order -- and sort or filter on either. Quoted because fputcsv
+# quotes any field containing a space.
+has "with the two notes kept apart" "$CSV" '"Meal note","Order note"'
+has "and the meal note as edited at checkout" "$CSV" "no onions and extra sauce"
+has "alongside the order note" "$CSV" "Side door please"
 hasnt "with no PHP notices" "$CSV" "Deprecated"
 
 T=$(tok $A /admin/settings)
