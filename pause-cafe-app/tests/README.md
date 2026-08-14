@@ -14,7 +14,7 @@ each run and never touching `data/`.
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
 php -d extension=php_pdo_sqlite tests/test-app.php        # 332 assertions
-php -d extension=php_pdo_sqlite tests/test-signin.php     # 86 assertions
+php -d extension=php_pdo_sqlite tests/test-signin.php     # 91 assertions
 ```
 
 **`test-schedule.php`** — window resolution. Each of the three modes on its own,
@@ -71,7 +71,10 @@ later inherits an address at the provider gets their own account and not the
 first person's — passwordless accounts refusing every password, and deleting
 somebody taking their links and tokens with them. Finally the register: the
 fallback that puts passwords back when everything else is off or misconfigured,
-and the organiser rescue.
+and the organiser rescue — including that it cannot be given up until an
+organiser has actually signed in through a provider, that a configured provider
+does not count, that a *member* signing in that way does not count either, and
+that deleting the organiser who proved it withdraws the proof.
 
 `fixtures-keys.php` holds three throwaway RSA keys. They are fixed rather than
 generated because `openssl_pkey_new()` needs an `openssl.cnf` that many PHP
@@ -84,7 +87,7 @@ and verifying need no config. The keys are public and protect nothing.
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 166 assertions
+bash tests/e2e.sh                                          # 172 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token
@@ -100,6 +103,12 @@ whatever is switched on, an emailed link arriving in `data/mail.log` and signing
 that person in exactly once, an unknown address getting the identical answer and
 no email, and — with passwords switched off for members — an organiser still
 getting in through the rescue while a member cannot.
+
+The lockout is driven end to end: saving passwords off, an unproven provider on,
+and the rescue off must leave the organiser route standing and working, while
+still saving the rest of the form. That combination was a real lockout before
+0.10.1, and the assertion exists because reading the code was not enough to
+catch it — reproducing it was.
 
 It expects an **empty** database, since it drives setup itself. Override the
 address with `BASE=http://... bash tests/e2e.sh`.

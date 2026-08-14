@@ -562,6 +562,31 @@ curl -s -o /dev/null -b $N -c $N -X POST "$BASE/login/rescue" \
   -d "_token=$T" -d "email=sam@example.org" -d "password=battery-staple"
 want "a member cannot use it" "$(code $N /account)" "302"
 
+# The lockout this all exists to prevent: passwords off, a provider that is
+# filled in but has never signed anybody in, and the rescue switched off too.
+# Saving that combination must not leave the site with no way in.
+T=$(tok $A /admin/signin)
+LOCKOUT=$(curl -s -b $A -c $A -L -X POST "$BASE/admin/signin" \
+  -d "_token=$T" -d "enabled[auth0]=1" \
+  -d "signin_auth0_domain=church.eu.auth0.com" \
+  -d "signin_auth0_client_id=abc" -d "signin_auth0_client_secret=shh")
+has "turning the rescue off is refused while unproven" "$LOCKOUT" "left on"
+has "explaining what would have to happen first" "$LOCKOUT" "signed in through a provider"
+
+LOGIN=$(curl -s "$BASE/login")
+has "so the organiser sign-in is still offered" "$LOGIN" "rescue=1"
+
+X=$(mktemp)
+T=$(tok $X "/login?rescue=1")
+want "and still works" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -b $X -c $X -X POST "$BASE/login/rescue" \
+    -d "_token=$T" -d "email=ada@example.org" -d "password=correct-horse")" "302"
+want "letting the organiser back in" "$(code $X /admin)" "200"
+
+# The rest of the form still saved -- only the dangerous switch was overridden.
+has "while the provider it was saved with is on" \
+  "$(curl -s -b $A -c $A "$BASE/admin/signin")" 'name="enabled\[auth0\]" value="1" checked'
+
 # Put passwords back for whatever runs after this.
 T=$(tok $A /admin/signin)
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/signin" \

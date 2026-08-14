@@ -66,6 +66,26 @@ class Identities {
 		)->fetchAll();
 	}
 
+	/**
+	 * Whether an organiser has ever actually got in through a provider.
+	 *
+	 * Rows here are only written after a provider has verified somebody, so one
+	 * belonging to an organiser is proof that the outside route worked at least
+	 * once for somebody who would need it. Settings being filled in proves
+	 * nothing: a client secret with a typo in it is configured.
+	 *
+	 * This is what the password rescue is allowed to be switched off against.
+	 */
+	public static function provenForAdmin(): bool {
+		$count = Database::pdo()->query(
+			"SELECT COUNT(*) FROM user_identities i
+			 JOIN users u ON u.id = i.user_id
+			 WHERE u.role = '" . Users::ROLE_ADMIN . "' AND i.last_seen_at != ''"
+		)->fetchColumn();
+
+		return (int) $count > 0;
+	}
+
 	public static function link( int $userId, string $provider, string $subject, string $email ): void {
 		$statement = Database::pdo()->prepare(
 			'INSERT INTO user_identities (user_id, provider, subject, email, created_at, last_seen_at)

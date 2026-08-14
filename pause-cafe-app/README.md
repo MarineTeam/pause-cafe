@@ -108,11 +108,28 @@ After that the link holds even if they change their address at the provider. The
 alternative, matching on the address every time, would mean whoever inherits an
 address at work inherits the wallet that went with it.
 
-**You cannot lock yourself out.** Two things see to it: if every method is off
-or misconfigured the password comes back on by itself, and "organisers can
-always sign in with a password" stays on unless you turn it off, which keeps
-`/login?rescue=1` working for organisers no matter what members use. A mistyped
-client secret should cost one sign-in, not the site.
+**You cannot lock yourself out.** Three things see to it:
+
+1. If every method is off or misconfigured, the password comes back on by
+   itself.
+2. **Organisers keep a password route at `/login?rescue=1`**, and it cannot be
+   switched off until an organiser has actually signed in through a provider.
+   A provider whose settings are filled in has proved nothing — a client secret
+   with a typo in it looks exactly like a working one right up until somebody
+   tries it. So the old door stays until somebody has walked through the new
+   one. The checkbox is held on and says why.
+3. If it all goes wrong anyway — the tenant is deleted, the account that proved
+   it works has left — there is a command-line way back that depends on nothing
+   outside the server:
+
+```bash
+php tools/rescue.php
+```
+
+That turns password sign-in and the organiser route back on. `--list` shows the
+organisers and whether each still has a password; `--reset you@example.org`
+generates a new one and prints it, so it never goes near the shell history or an
+inbox. It refuses to run over the web.
 
 ### Adding another provider
 
