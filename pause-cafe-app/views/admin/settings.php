@@ -2,7 +2,7 @@
 use PauseCafe\Csrf;
 use PauseCafe\Schedule;
 
-include __DIR__ . '/_tabs.php';
+include \PauseCafe\View::locate( 'admin/_tabs' );
 
 $weekdays = array( 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' );
 $mode     = $settings['active_mode'];

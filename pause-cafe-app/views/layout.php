@@ -1,25 +1,54 @@
 <?php
 use PauseCafe\Auth;
 use PauseCafe\Cart;
+use PauseCafe\Design;
 use PauseCafe\Settings;
+use PauseCafe\Themes;
 use PauseCafe\View;
 
 $user      = Auth::user();
 $cartCount = Auth::check() ? Cart::count() : 0;
 $flash     = View::takeFlash();
+
+$brand     = Design::brandName();
+$logo      = Design::logo();
+$mode      = Design::themeAttribute();
+$designCss = Design::css();
+$themeCss  = Themes::stylesheetUrl();
 ?><!doctype html>
-<html lang="en">
+<html lang="en"<?= '' !== $mode ? ' data-theme="' . e( $mode ) . '"' : '' ?>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= e( $title ? $title . ' — Pause Cafe' : 'Pause Cafe' ) ?></title>
+<title><?= e( $title ? $title . ' — ' . $brand : $brand ) ?></title>
 <link rel="stylesheet" href="/assets/app.css?v=<?= e( PAUSE_CAFE_VERSION ) ?>">
+<?php if ( '' !== $themeCss ) : ?>
+	<?php // After app.css, so a theme overrides rather than fights it. ?>
+	<link rel="stylesheet" href="<?= e( $themeCss ) ?>">
+<?php endif; ?>
+<?php if ( '' !== $designCss ) : ?>
+	<?php
+	/*
+	 * Last, and inline, so the organiser's choices beat both stylesheets and
+	 * arrive in the first response rather than a second request. Only tokens
+	 * that differ from their default are here, so this is usually a few lines
+	 * and often nothing at all.
+	 */
+	?>
+	<style><?= $designCss ?></style>
+<?php endif; ?>
 </head>
 <body>
 
 <header class="site-header">
 	<div class="wrap header-inner">
-		<a class="brand" href="/">Pause Cafe</a>
+		<a class="brand" href="/">
+			<?php if ( '' !== $logo ) : ?>
+				<img src="<?= e( $logo ) ?>" alt="<?= e( $brand ) ?>" class="brand__logo">
+			<?php else : ?>
+				<?= e( $brand ) ?>
+			<?php endif; ?>
+		</a>
 
 		<nav class="site-nav">
 			<a href="/">Menu</a>

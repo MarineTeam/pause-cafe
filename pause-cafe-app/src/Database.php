@@ -336,6 +336,10 @@ class Database {
 		// Answers to any field beyond the three built-in ones, as JSON.
 		self::addColumnIfMissing( 'order_lines', 'extra_fields', "TEXT NOT NULL DEFAULT ''" );
 
+		// Public URL of an uploaded photo. Empty means the card falls back to
+		// its typographic layout, which is the normal case.
+		self::addColumnIfMissing( 'menu_items', 'image_path', "TEXT NOT NULL DEFAULT ''" );
+
 		self::seed();
 	}
 

@@ -6,7 +6,7 @@
 declare(strict_types=1);
 
 // Kept in step with CHANGELOG.md.
-defined( 'PAUSE_CAFE_VERSION' ) || define( 'PAUSE_CAFE_VERSION', '0.10.3' );
+defined( 'PAUSE_CAFE_VERSION' ) || define( 'PAUSE_CAFE_VERSION', '0.11.0' );
 
 spl_autoload_register(
 	static function ( string $class ): void {
@@ -27,12 +27,14 @@ spl_autoload_register(
 require_once __DIR__ . '/View.php';
 
 use PauseCafe\Database;
+use PauseCafe\Images;
 use PauseCafe\Mail\LogTransport;
 use PauseCafe\Mailer;
 use PauseCafe\Money;
 use PauseCafe\Payments;
 use PauseCafe\Schedule;
 use PauseCafe\SignIn;
+use PauseCafe\Themes;
 use PauseCafe\View;
 use PauseCafe\Zeffy;
 
@@ -53,7 +55,8 @@ date_default_timezone_set( $config['timezone'] ?? 'UTC' );
 Database::configure( $config['database'] );
 Schedule::configure( $config['timezone'] ?? 'UTC' );
 Money::configure( $config['currency'] ?? '$' );
-View::configure( $root . '/views' );
+Themes::configure( $root . '/themes' );
+Images::configure( $root . '/public/assets/uploads', '/assets/uploads' );
 Zeffy::configure(
 	(string) ( $config['zeffy_secret'] ?? '' ),
 	(string) ( $config['zeffy_api_key'] ?? '' ),
@@ -61,6 +64,14 @@ Zeffy::configure(
 );
 
 Database::migrate();
+
+/*
+ * The theme is a setting, so this has to come after migrate() -- Themes reads
+ * the settings table to find out which one is active, and on a fresh install
+ * that table does not exist until now. A theme's views are searched before the
+ * built-in ones; anything it does not provide falls through.
+ */
+View::configure( $root . '/views', Themes::viewPath() );
 
 // Registers the built-in payment methods. A site adding its own would call
 // Payments::register() after this line.

@@ -18,7 +18,7 @@
 		<div class="field">
 			<?php
 			$gs = array( 'id' => 'group_name' );
-			include __DIR__ . '/partials/group-select.php';
+			include \PauseCafe\View::locate( 'partials/group-select' );
 			?>
 			<p class="help">Used as the default on your orders. You can change it per meal.</p>
 		</div>

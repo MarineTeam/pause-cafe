@@ -12,7 +12,7 @@ use PauseCafe\SignIn;
 use PauseCafe\SignIn\Method;
 use PauseCafe\SignIn\OidcMethod;
 
-include __DIR__ . '/_tabs.php';
+include \PauseCafe\View::locate( 'admin/_tabs' );
 
 $routes = SignIn::organiserRoutes();
 ?>

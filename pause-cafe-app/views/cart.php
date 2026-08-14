@@ -66,7 +66,7 @@ $problems = $cart['problems'];
 									'prefix' => 'cart' . (int) $line['index'],
 								);
 
-								include __DIR__ . '/partials/order-fields.php';
+								include \PauseCafe\View::locate( 'partials/order-fields' );
 								?>
 
 								<div class="field">

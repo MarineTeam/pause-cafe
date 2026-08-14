@@ -83,6 +83,68 @@ and a blackout date voids the window entirely.
 Defaults reproduce the current rhythm: served Sunday, opens Tuesday noon, closes
 Saturday 1pm.
 
+## How it looks
+
+**Organiser → Design.** Colours, type, corner rounding, card style, the site
+name, a logo and dark mode, for the whole site — the menu, the cart and the
+organiser screens together. Three starting points (Plain, Bold, Warm paper) fill
+everything in; adjust from there.
+
+It works because [app.css](public/assets/app.css) puts every colour, corner and
+typeface behind a CSS custom property and nothing below that block hardcodes
+one. The Design screen writes a second `:root` inline in the page containing
+**only what differs from the default**, so an untouched site ships no extra
+bytes and a site that changed one colour ships one line. Add a hardcoded colour
+to the stylesheet and you have opted that element out of both theming and dark
+mode.
+
+**Dark mode** has its own built-in palette rather than deriving one from the
+chosen colours — a hand-picked dark scheme reads better than an inverted light
+one. Set it to follow the visitor's device, or force it either way.
+
+### Themes
+
+A theme is a folder under `themes/`:
+
+```
+themes/list/
+  theme.php     name and description — this is what makes it a theme
+  style.css     loaded after app.css, so it only says what differs
+  views/        optional; any template here replaces the built-in one
+```
+
+`themes/list/` ships as a working example: it turns the card grid into one dish
+per row, using CSS alone. Choose it under Design.
+
+**Templates fall through.** A theme provides what it wants to change and
+inherits the rest. The intended place to start is
+`views/partials/dish-card.php` — one dish, extracted specifically so a theme can
+replace it without copying the ordering rules, the field resolution or the
+cutoff handling.
+
+Two things to know:
+
+- **A theme's copy of a template stops tracking the original.** Replace
+  `dish-card.php` and a later improvement to the built-in one will not reach
+  your site. That is the trade-off for being able to change anything; it is why
+  the example theme is CSS only.
+- **`themes/` is not web-reachable, and must not be.** It is PHP that runs with
+  full access to the app. The stylesheet gets out through a route that reads one
+  known filename; the stored theme name is checked against the folders that
+  actually exist rather than being used to build a path.
+
+### Pictures
+
+Each dish can have one, set on its edit screen, and a dish without one still
+looks deliberate — the card falls back to a typographic layout. Uploads are
+capped at 6 MB, re-encoded through GD (which discards anything hiding in the
+file) and scaled to 1200px on the longest edge, so a photo straight off a phone
+is fine. The type is read from the bytes rather than the filename, and the
+stored name is random.
+
+They live in `public/assets/uploads/`, which is gitignored — they are content,
+not source, and a deploy must not overwrite them.
+
 ## Signing in
 
 Several ways, each switched on or off under **Signing in**. More than one can

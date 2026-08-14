@@ -1,12 +1,9 @@
 <?php
-use PauseCafe\Auth;
-use PauseCafe\Csrf;
-use PauseCafe\Menu;
-use PauseCafe\Money;
 use PauseCafe\Schedule;
 use PauseCafe\Settings;
 
-$user     = Auth::user();
+// The dish itself, and everything it needs to know about ordering, lives in
+// partials/dish-card.php -- which is the piece a theme replaces.
 $multiple = count( $sections ) > 1;
 $anything = false;
 
@@ -40,13 +37,35 @@ foreach ( $sections as $section ) {
 		?>
 
 		<section class="menu-section">
-			<?php if ( $multiple ) : ?>
-				<h2 class="menu-section__name"><?= e( $section['rules']['name'] ) ?></h2>
-			<?php endif; ?>
+			<?php
+			/*
+			 * The state of the week, said once at the top rather than repeated
+			 * on every card. A visitor should be able to tell whether they can
+			 * order without reading a dish.
+			 */
+			$window = $section['window'] ?? null;
+			$state  = $window ? $window->state() : '';
+			?>
 
-			<?php if ( $section['serviceDate'] ) : ?>
-				<p class="menu-state"><?= e( Schedule::formatDate( $section['serviceDate'], 'l j F' ) ) ?></p>
-			<?php endif; ?>
+			<div class="week">
+				<?php if ( $section['serviceDate'] ) : ?>
+					<p class="week__date"><?= e( Schedule::formatDate( $section['serviceDate'], 'l j F' ) ) ?></p>
+				<?php endif; ?>
+
+				<?php if ( $multiple ) : ?>
+					<h2 class="week__name"><?= e( $section['rules']['name'] ) ?></h2>
+				<?php endif; ?>
+
+				<?php if ( '' !== $section['blackout'] ) : ?>
+					<span class="pill pill--blackout"><?= e( $section['blackout'] ) ?></span>
+				<?php elseif ( $window && $window->isOrderable() ) : ?>
+					<span class="pill pill--open"><?= e( $window->message() ) ?></span>
+				<?php elseif ( $window && '' !== $window->message() ) : ?>
+					<span class="pill pill--<?= 'upcoming' === $state ? 'upcoming' : 'closed' ?>">
+						<?= e( $window->message() ) ?>
+					</span>
+				<?php endif; ?>
+			</div>
 
 			<?php if ( '' !== $section['blackout'] ) : ?>
 
@@ -81,101 +100,13 @@ foreach ( $sections as $section ) {
 				<ul class="dishes" style="--cols: <?= (int) $columns ?>">
 					<?php foreach ( $dishes as $entry ) : ?>
 						<?php
-						$item      = $entry['item'];
-						$window    = $item['window'];
-						$orderable = $window->isOrderable();
-						$soldOut   = Menu::isSoldOut( $item );
+						$dc = array(
+							'item'     => $entry['item'],
+							'location' => $entry['location'],
+						);
+
+						include \PauseCafe\View::locate( 'partials/dish-card' );
 						?>
-						<li class="dish">
-							<p class="dish__where"><?= e( $entry['location'] ) ?></p>
-							<h3 class="dish__name"><?= e( $item['name'] ) ?></h3>
-
-							<?php if ( '' !== $item['description'] ) : ?>
-								<p class="dish__desc"><?= e( $item['description'] ) ?></p>
-							<?php endif; ?>
-
-							<p class="dish__price"><?= e( Money::format( (int) $item['price_cents'] ) ) ?></p>
-
-							<?php if ( ! $orderable ) : ?>
-								<p class="dish__note"><?= e( $window->message() ) ?></p>
-							<?php elseif ( $soldOut ) : ?>
-								<p class="dish__note">Sold out.</p>
-							<?php elseif ( null !== $item['remaining'] && $item['remaining'] <= 5 ) : ?>
-								<p class="dish__left">Only <?= (int) $item['remaining'] ?> left</p>
-							<?php endif; ?>
-
-							<?php if ( $orderable && ! $soldOut ) : ?>
-								<?php if ( ! $user ) : ?>
-									<p class="dish__action"><a class="button" href="/login">Sign in to order</a></p>
-								<?php elseif ( ! Auth::canOrder() ) : ?>
-									<p class="muted">Waiting for approval.</p>
-								<?php else : ?>
-									<form method="post" action="/cart/add" class="dish__form">
-										<?= Csrf::field() ?>
-										<input type="hidden" name="item_id" value="<?= (int) $item['id'] ?>">
-
-										<?php
-										/*
-										 * Which questions get asked is set by the organiser, per site,
-										 * per schedule and per dish.
-										 *
-										 * Anything with a value to prefill -- name and group come from
-										 * the account -- folds away, so ordering for yourself stays one
-										 * click. A closed <details> still submits its fields. A required
-										 * question with nothing to prefill has to be answered, so it
-										 * stays visible.
-										 */
-										$fields   = \PauseCafe\MenuFields::visibleFor( $item );
-										$defaults = \PauseCafe\MenuFields::collect( $item, array(), $user );
-
-										$upfront = array();
-										$folded  = array();
-
-										foreach ( $fields as $fieldKey => $field ) {
-											if ( $field['required'] && '' === (string) ( $defaults[ $fieldKey ] ?? '' ) ) {
-												$upfront[ $fieldKey ] = $field;
-											} else {
-												$folded[ $fieldKey ] = $field;
-											}
-										}
-
-										if ( $upfront ) {
-											$of = array(
-												'fields' => $upfront,
-												'values' => $defaults,
-												'prefix' => 'up' . (int) $item['id'],
-											);
-
-											include __DIR__ . '/partials/order-fields.php';
-										}
-										?>
-
-										<?php if ( $folded ) : ?>
-											<details class="dish__details">
-												<summary>Ordering for someone else?</summary>
-												<?php
-												$of = array(
-													'fields' => $folded,
-													'values' => $defaults,
-													'prefix' => 'fold' . (int) $item['id'],
-												);
-
-												include __DIR__ . '/partials/order-fields.php';
-												?>
-											</details>
-										<?php endif; ?>
-
-										<div class="dish__buy">
-											<label class="sr-only" for="qty-<?= (int) $item['id'] ?>">Quantity</label>
-											<input type="number" id="qty-<?= (int) $item['id'] ?>" name="qty" value="1" min="1"
-												aria-label="Quantity"
-												<?= null !== $item['remaining'] ? 'max="' . (int) $item['remaining'] . '"' : '' ?>>
-											<button type="submit">Add to cart</button>
-										</div>
-									</form>
-								<?php endif; ?>
-							<?php endif; ?>
-						</li>
 					<?php endforeach; ?>
 				</ul>
 

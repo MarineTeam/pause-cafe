@@ -16,8 +16,17 @@ use PauseCafe\Mail\Result;
  */
 class Notifications {
 
+	/**
+	 * What to call this site in an email.
+	 *
+	 * The Design screen owns the name now. The mail-from name is kept as a
+	 * fallback because that is where it used to live, and an install that set
+	 * it there should not start sending mail signed "Pause Cafe".
+	 */
 	public static function siteName(): string {
-		return Mailer::fromName();
+		$brand = trim( Settings::get( 'design_brand_name' ) );
+
+		return '' !== $brand ? $brand : Mailer::fromName();
 	}
 
 	public static function baseUrl(): string {

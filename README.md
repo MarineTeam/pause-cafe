@@ -29,8 +29,10 @@ it, and brings its own accounts, wallet and checkout.
 | Bulk entry | Month grid | Single row | Month grid | Month grid |
 | Accounts, wallet, checkout | WooCommerce | WooCommerce | WooCommerce | Built in |
 | How people sign in | WordPress | WordPress | WordPress | Password, emailed link, Auth0, Supabase |
+| Styling | Your WP theme | Your WP theme | Your WP theme | Design screen, plus swappable themes |
+| Dish photos | WooCommerce | WooCommerce | WooCommerce | Yes |
 | Needs WordPress | Yes | Yes | Yes | **No** |
-| Lines | ~3,000 | ~2,900 | ~4,700 | ~12,000 |
+| Lines | ~3,000 | ~2,900 | ~4,700 | ~13,000 |
 
 **At 20–30 orders a week, start with the simplest one that covers what you
 need.** The app is the better-tested code and the cleaner system, but adopting

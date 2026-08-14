@@ -2,7 +2,7 @@
 use PauseCafe\Csrf;
 use PauseCafe\MenuFields;
 
-include __DIR__ . '/_tabs.php';
+include \PauseCafe\View::locate( 'admin/_tabs' );
 
 /**
  * The editor body, shared by each existing field and the add form.

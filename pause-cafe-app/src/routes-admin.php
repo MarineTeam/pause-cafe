@@ -11,8 +11,10 @@ declare(strict_types=1);
 use PauseCafe\Auth;
 use PauseCafe\Blackouts;
 use PauseCafe\Csrf;
+use PauseCafe\Design;
 use PauseCafe\Groups;
 use PauseCafe\Identities;
+use PauseCafe\Images;
 use PauseCafe\Kitchen;
 use PauseCafe\Mailer;
 use PauseCafe\Menu;
@@ -27,6 +29,7 @@ use PauseCafe\Schedule;
 use PauseCafe\Schedules;
 use PauseCafe\Settings;
 use PauseCafe\SignIn;
+use PauseCafe\Themes;
 use PauseCafe\Users;
 use PauseCafe\View;
 use PauseCafe\Wallet;
@@ -458,9 +461,35 @@ $router->post(
 			'field_rules'  => MenuFields::rulesFromPost( $_POST ),
 		);
 
+		$existing = $id ? Menu::item( $id ) : null;
+
 		if ( $id ) {
-			$existing          = Menu::item( $id );
 			$data['opened_at'] = $existing ? (string) $existing['opened_at'] : '';
+		}
+
+		/*
+		 * The picture. Absent from the form means "leave it alone", which is
+		 * what a save that only changed the price should do -- so the existing
+		 * value is carried forward unless something explicitly replaces or
+		 * removes it.
+		 */
+		$data['image_path'] = $existing ? (string) ( $existing['image_path'] ?? '' ) : '';
+
+		if ( isset( $_POST['remove_image'] ) ) {
+			Images::forget( $data['image_path'] );
+			$data['image_path'] = '';
+		} elseif ( isset( $_FILES['image'] ) && UPLOAD_ERR_NO_FILE !== (int) ( $_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE ) ) {
+			try {
+				$uploaded = Images::accept( $_FILES['image'] );
+
+				// The old one is only removed once the new one is safely on
+				// disk, so a failed upload does not leave the dish with none.
+				Images::forget( $data['image_path'] );
+				$data['image_path'] = $uploaded;
+			} catch ( \RuntimeException $e ) {
+				View::flash( 'error', $e->getMessage() . ' Nothing else was saved.' );
+				View::redirect( $id ? '/admin/menu/' . $id : '/admin/menu/new' );
+			}
 		}
 
 		// In on-publish mode a brand new published dish opens ordering there and
@@ -1101,6 +1130,83 @@ $router->post(
 
 		View::flash( 'success', 'Email settings saved.' );
 		View::redirect( '/admin/settings' );
+	}
+);
+
+/* -------------------------------------------------------------------------
+ * Design
+ * ---------------------------------------------------------------------- */
+
+$router->get(
+	'/admin/design',
+	static function () use ( $requireAdmin ): void {
+		$requireAdmin();
+
+		echo View::render(
+			'admin/design',
+			array(
+				'title'   => 'Design',
+				'groups'  => Design::grouped(),
+				'presets' => Design::presets(),
+				'themes'  => Themes::all(),
+				'active'  => Themes::slug(),
+			)
+		);
+	}
+);
+
+$router->post(
+	'/admin/design',
+	static function () use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		// A preset is a shortcut for filling the form in, so it is applied
+		// first and whatever else was submitted lands on top of it.
+		$preset = $post( 'preset' );
+
+		if ( '' !== $preset && Design::applyPreset( $preset ) ) {
+			View::flash( 'success', 'Applied the ' . Design::presets()[ $preset ]['label'] . ' look. Adjust anything you like.' );
+			View::redirect( '/admin/design' );
+		}
+
+		if ( '' !== $post( 'reset' ) ) {
+			Design::reset();
+			View::flash( 'success', 'Put everything back to the defaults.' );
+			View::redirect( '/admin/design' );
+		}
+
+		/*
+		 * Driven by the token list rather than a fixed set of fields, so a new
+		 * token needs no change here. Design::set() validates each one and
+		 * ignores anything that does not fit, which is what keeps a colour
+		 * field from becoming a way to write arbitrary CSS.
+		 */
+		foreach ( Design::tokens() as $key => $token ) {
+			if ( ! array_key_exists( $key, $_POST ) ) {
+				continue;
+			}
+
+			Design::set( $key, (string) $_POST[ $key ] );
+		}
+
+		$theme = $post( 'design_theme' );
+
+		if ( ! Themes::isValid( $theme ) ) {
+			/*
+			 * Said rather than swallowed. Themes::slug() would refuse this
+			 * anyway, but silently keeping the old theme after being told to
+			 * change it is the kind of thing an organiser spends an afternoon
+			 * on before working out the name was wrong.
+			 */
+			View::flash( 'error', 'Everything else was saved, but there is no theme called “' . $theme . '”.' );
+			View::redirect( '/admin/design' );
+		}
+
+		Settings::set( 'design_theme', $theme );
+
+		View::flash( 'success', 'Design saved.' );
+		View::redirect( '/admin/design' );
 	}
 );
 

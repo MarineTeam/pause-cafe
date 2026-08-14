@@ -4,7 +4,7 @@ use PauseCafe\Money;
 use PauseCafe\Schedule;
 use PauseCafe\Window;
 
-include __DIR__ . '/_tabs.php';
+include \PauseCafe\View::locate( 'admin/_tabs' );
 
 $labels = array(
 	Window::OPEN     => 'Ordering open',

@@ -1,0 +1,68 @@
+/*
+ * Compact list.
+ *
+ * Loaded after app.css, so this only says what differs. Everything it does not
+ * mention -- colours, type, corners -- still comes from the Design screen, which
+ * is why a theme does not have to fight the customizer to coexist with it.
+ */
+
+/* One column whatever the organiser set, because a row is already full width. */
+.dishes {
+	grid-template-columns: 1fr !important;
+	gap: 0;
+	border-top: 1px solid var(--line);
+}
+
+.dish {
+	background: transparent;
+	border: 0;
+	border-bottom: 1px solid var(--line);
+	border-radius: 0;
+	padding: 16px 4px;
+
+	display: grid;
+	grid-template-columns: 1fr auto;
+	grid-template-areas:
+		"where  foot"
+		"name   foot"
+		"desc   foot"
+		"state  foot";
+	align-items: start;
+	column-gap: 20px;
+}
+
+.dish__where { grid-area: where; }
+.dish__name  { grid-area: name; font-size: 18px; }
+.dish__desc  { grid-area: desc; margin-bottom: 0; }
+.dish__state { grid-area: state; margin: 8px 0 0; }
+
+/* The form spans the right-hand column and keeps its own vertical rhythm. */
+.dish__form {
+	grid-area: foot;
+	align-self: center;
+	margin: 0;
+	min-width: 210px;
+}
+
+.dish > .dish__foot {
+	grid-area: foot;
+	align-self: center;
+	margin: 0;
+	padding: 0;
+	justify-content: flex-end;
+}
+
+.dish__form .dish__foot { padding-top: 8px; }
+
+.dish__details { margin: 0 0 4px; }
+
+/* Below the fold of a phone the two columns stop being two columns. */
+@media (max-width: 620px) {
+	.dish {
+		grid-template-columns: 1fr;
+		grid-template-areas: "where" "name" "desc" "state" "foot";
+		row-gap: 8px;
+	}
+
+	.dish__form, .dish > .dish__foot { min-width: 0; justify-content: space-between; }
+}

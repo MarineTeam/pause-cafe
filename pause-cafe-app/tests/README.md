@@ -15,6 +15,7 @@ each run and never touching `data/`.
 php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
 php -d extension=php_pdo_sqlite tests/test-app.php        # 332 assertions
 php -d extension=php_pdo_sqlite tests/test-signin.php     # 96 assertions
+php -d extension=php_pdo_sqlite tests/test-design.php     # 67 assertions
 ```
 
 **`test-schedule.php`** — window resolution. Each of the three modes on its own,
@@ -82,12 +83,39 @@ builds cannot find — including the one this was written on — and a test that
 only runs on a tidy OpenSSL installation is a test that stops running. Signing
 and verifying need no config. The keys are public and protect nothing.
 
+**`test-design.php`** — how the site looks. That `Design::css()` emits nothing
+at all until something is changed, and then exactly one line per change; that a
+colour box cannot be used to write CSS, since its value lands inside a `<style>`
+block where a stray brace would turn the rest into arbitrary rules; that numbers
+are clamped and unknown fonts refused; and that the site name has newlines
+stripped, because it reaches an email header.
+
+One assertion in there is worth knowing about: it reads `app.css` and checks
+every token default matches the `:root` value. The two have to agree — a
+default that disagrees is suppressed by `css()` and the page quietly shows the
+stylesheet's value instead, with nothing on screen to explain why the organiser's
+choice did not take. That is a coupling with no other way of noticing.
+
+Themes are exercised against a throwaway theme built in the temp directory, so
+the tests still mean something if the shipped one changes: a directory without a
+manifest is not a theme; the stored slug is matched against what exists rather
+than pasted into a path (`../../etc`, `/etc/passwd`, `tester/../..` and a
+capitalised name all resolve to no theme); a theme deleted while selected falls
+back to core instead of fataling; and a template the theme provides comes from
+the theme while one it does not comes from core.
+
+Pictures cover the checks that run before `is_uploaded_file()`, which cannot be
+true outside a real request — a script wearing a `.jpg` is refused, as is a path
+that was never uploaded — plus that deleting one only ever touches files in the
+uploads directory whose names match what was written there. The happy path is
+covered over HTTP in `e2e.sh`.
+
 ## With a server
 
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 179 assertions
+bash tests/e2e.sh                                          # 201 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token

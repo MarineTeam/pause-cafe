@@ -2,7 +2,7 @@
 use PauseCafe\Csrf;
 use PauseCafe\Schedule;
 
-include __DIR__ . '/_tabs.php';
+include \PauseCafe\View::locate( 'admin/_tabs' );
 
 /**
  * The datalist gives native autocomplete with no JavaScript. Typing a name that

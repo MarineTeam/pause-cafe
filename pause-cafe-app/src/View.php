@@ -7,10 +7,23 @@ namespace PauseCafe;
  */
 class View {
 
-	private static string $root = '';
+	/** @var string[] Searched in order; the first file found wins. */
+	private static array $roots = array();
 
-	public static function configure( string $root ): void {
-		self::$root = rtrim( $root, '/\\' );
+	/**
+	 * @param string $core  The built-in views directory.
+	 * @param string $theme A theme's views directory, searched first.
+	 */
+	public static function configure( string $core, string $theme = '' ): void {
+		self::$roots = array();
+
+		foreach ( array( $theme, $core ) as $root ) {
+			$root = rtrim( $root, '/\\' );
+
+			if ( '' !== $root ) {
+				self::$roots[] = $root;
+			}
+		}
 	}
 
 	/**
@@ -35,10 +48,31 @@ class View {
 		);
 	}
 
-	private static function capture( string $template, array $data ): string {
-		$file = self::$root . '/' . str_replace( '..', '', $template ) . '.php';
+	/**
+	 * The file backing a template, or '' when nothing provides it.
+	 *
+	 * A theme overrides one template at a time: it supplies menu.php and
+	 * inherits every other screen. The trade-off is that a theme's copy will
+	 * not pick up later changes to the core one.
+	 */
+	public static function locate( string $template ): string {
+		$relative = str_replace( '..', '', $template ) . '.php';
 
-		if ( ! is_file( $file ) ) {
+		foreach ( self::$roots as $root ) {
+			$file = $root . '/' . $relative;
+
+			if ( is_file( $file ) ) {
+				return $file;
+			}
+		}
+
+		return '';
+	}
+
+	private static function capture( string $template, array $data ): string {
+		$file = self::locate( $template );
+
+		if ( '' === $file ) {
 			throw new \RuntimeException( 'Missing template: ' . $template );
 		}
 

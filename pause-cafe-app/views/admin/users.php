@@ -2,7 +2,7 @@
 use PauseCafe\Csrf;
 use PauseCafe\Money;
 
-include __DIR__ . '/_tabs.php';
+include \PauseCafe\View::locate( 'admin/_tabs' );
 ?>
 
 <h1>People</h1>
@@ -85,7 +85,7 @@ include __DIR__ . '/_tabs.php';
 												'id'    => 'group-user-' . (int) $row['id'],
 												'value' => $row['group_name'],
 											);
-											include __DIR__ . '/../partials/group-select.php';
+											include \PauseCafe\View::locate( 'partials/group-select' );
 											?>
 										</div>
 										<div>
@@ -141,7 +141,7 @@ include __DIR__ . '/_tabs.php';
 			<div>
 				<?php
 				$gs = array( 'id' => 'new-group' );
-				include __DIR__ . '/../partials/group-select.php';
+				include \PauseCafe\View::locate( 'partials/group-select' );
 				?>
 			</div>
 			<div>

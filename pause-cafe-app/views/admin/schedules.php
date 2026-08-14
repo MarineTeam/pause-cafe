@@ -4,7 +4,7 @@ use PauseCafe\MenuFields;
 use PauseCafe\Schedule;
 use PauseCafe\Schedules;
 
-include __DIR__ . '/_tabs.php';
+include \PauseCafe\View::locate( 'admin/_tabs' );
 
 $weekdays = array( 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' );
 
@@ -107,7 +107,7 @@ $fields = static function ( array $rules, array $locations, array $chosen ) use 
 		'note'  => 'Overrides the site default for dishes on this schedule. A single dish can override it again.',
 	);
 
-	include __DIR__ . '/../partials/field-rules.php';
+	include \PauseCafe\View::locate( 'partials/field-rules' );
 	?>
 
 	<div class="field">
