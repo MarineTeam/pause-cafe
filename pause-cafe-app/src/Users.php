@@ -167,7 +167,7 @@ class Users {
 	}
 
 	public static function update( int $id, array $fields ): void {
-		$allowed = array( 'name', 'group_name', 'role', 'is_approved', 'email' );
+		$allowed = array( 'name', 'group_name', 'role', 'is_approved', 'email', 'admin_nav' );
 		$sets    = array();
 		$values  = array();
 

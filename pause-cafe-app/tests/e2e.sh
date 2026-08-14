@@ -526,6 +526,102 @@ BOGUS=$(curl -s -b $A -c $A "$BASE/admin?date=not-a-date")
 has "a bogus date falls back to the next serving" "$BOGUS" "Cook list for Sunday 16 August"
 
 echo ""
+echo "Orders whose dish was taken off the menu"
+# The hole this closes: deleting a sold dish drafts it, and the date pickers
+# were built from published dishes only -- so the orders, and the money, fell
+# off every screen at once.
+T=$(tok $A /admin/menu/new)
+# Saving redirects to the new dish, so the id comes from the Location header
+# rather than from guessing which row of the menu list is the new one -- that
+# list is newest-first, and picking the wrong end drafts somebody else's dish.
+DOOMED=$(curl -s -o /dev/null -w '%{redirect_url}' -b $A -c $A -X POST "$BASE/admin/menu/save" \
+  -d "_token=$T" -d "name=Doomed pie" -d "location_id=1" -d "price=4.00" \
+  -d "status=published" -d "service_date=2026-09-06" \
+  -d "open_from=2026-01-01T00:00" -d "close_at=2027-01-01T00:00" | grep -o '[0-9]*$')
+
+T=$(tok $M /)
+curl -s -o /dev/null -b $M -c $M -X POST "$BASE/cart/add" -d "_token=$T" -d "item_id=$DOOMED" -d "qty=1"
+curl -s -o /dev/null -b $M -c $M -X POST "$BASE/checkout" \
+  -d "_token=$(tok $M /cart)" -d "payment_method=wallet" -d "line[0][qty]=1"
+
+# Now take it off the menu. It has been ordered, so it drafts.
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/$DOOMED/delete" -d "_token=$(tok $A "/admin/menu/$DOOMED")"
+
+ORD=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06")
+has "the date is still offered" "$ORD" "2026-09-06"
+has "the orders are still listed" "$ORD" "sam@example.org"
+has "and it says the dish has gone" "$ORD" "No longer on the menu"
+has "naming it" "$ORD" "Doomed pie"
+
+echo ""
+echo "Bulk actions on orders"
+has "there are tick boxes" "$ORD" 'name="ids\[\]"'
+has "and a status filter" "$ORD" 'name="status"'
+
+# Flashes are read on a following request rather than through curl -L: a
+# redirect chain and a separate GET both work, but fetching the CSRF token for
+# the next step is itself a request, and it eats whatever is waiting.
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/bulk" \
+  -d "_token=$(tok $A "/admin/orders?date=2026-09-06")" \
+  -d "date=2026-09-06" -d "status=confirmed" -d "action=paid"
+has "ticking nothing does nothing" \
+  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06")" "Nothing was ticked"
+
+# An id from a date the organiser is not looking at must not be acted on.
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/bulk" \
+  -d "_token=$(tok $A "/admin/orders?date=2026-09-06")" \
+  -d "date=2026-09-06" -d "status=confirmed" -d "action=cancel" -d "ids[]=99999"
+has "an order from elsewhere is refused" \
+  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06")" "not on this date"
+
+# The ids of everything currently listed. sed, not a trailing-digits grep --
+# the attribute ends in a quote, so anchoring on the end of the line matches
+# nothing at all and silently ticks no boxes.
+IDS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06" \
+  | sed -n 's/.*name="ids\[\]" value="\([0-9]*\)".*/\1/p')
+ARGS=""
+for id in $IDS; do ARGS="$ARGS -d ids[]=$id"; done
+want "there are orders to act on" "$([ -n "$IDS" ] && echo yes || echo no)" "yes"
+
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/bulk" \
+  -d "_token=$(tok $A "/admin/orders?date=2026-09-06")" \
+  -d "date=2026-09-06" -d "status=confirmed" -d "action=paid" $ARGS
+has "several can be marked paid at once" \
+  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06")" "marked paid"
+
+# Cancelling in bulk refunds and keeps the record.
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/bulk" \
+  -d "_token=$(tok $A "/admin/orders?date=2026-09-06")" \
+  -d "date=2026-09-06" -d "status=confirmed" -d "action=cancel" $ARGS
+has "and cancelled at once" \
+  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06")" "order(s) cancelled"
+
+CANCELLED=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06&status=cancelled")
+has "cancelled orders remain visible" "$CANCELLED" "Cancelled"
+hasnt "and are out of the live list" \
+  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06&status=confirmed")" 'name="ids\[\]"'
+
+echo ""
+echo "Organiser navigation"
+has "the menu is across the top by default" "$(curl -s -b $A -c $A "$BASE/admin")" "admin-nav--top"
+
+T=$(tok $A /admin/settings)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/nav" -d "_token=$T" -d "style=side"
+has "it can be moved to the side" "$(curl -s -b $A -c $A "$BASE/admin")" "admin-nav--side"
+has "and stays there across screens" "$(curl -s -b $A -c $A "$BASE/admin/menu")" "admin-nav--side"
+
+# The choice belongs to the person, not the site.
+has "while another organiser is unaffected" "$(curl -s -b $M -c $M "$BASE/")" "Sunday Menu"
+
+T=$(tok $A /admin/settings)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/nav" -d "_token=$T" -d "style=top"
+has "and back again" "$(curl -s -b $A -c $A "$BASE/admin")" "admin-nav--top"
+
+SET=$(curl -s -b $A -c $A "$BASE/admin/settings")
+has "long screens offer jump links" "$SET" 'href="#blackouts"'
+has "with the section to match" "$SET" 'id="blackouts"'
+
+echo ""
 echo "Design"
 want "the design screen is there" "$(code $A /admin/design)" "200"
 DESIGN=$(curl -s -b $A -c $A "$BASE/admin/design")

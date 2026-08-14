@@ -3,7 +3,6 @@ use PauseCafe\Csrf;
 use PauseCafe\Money;
 use PauseCafe\Schedule;
 
-include \PauseCafe\View::locate( 'admin/_tabs' );
 ?>
 
 <h1>Order for someone</h1>

@@ -4,8 +4,6 @@ use PauseCafe\MenuFields;
 use PauseCafe\Schedule;
 use PauseCafe\Schedules;
 
-include \PauseCafe\View::locate( 'admin/_tabs' );
-
 $weekdays = array( 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' );
 
 /**

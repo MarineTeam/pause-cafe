@@ -2,8 +2,6 @@
 use PauseCafe\Csrf;
 use PauseCafe\Schedule;
 
-include \PauseCafe\View::locate( 'admin/_tabs' );
-
 /**
  * The datalist gives native autocomplete with no JavaScript. Typing a name that
  * already exists carries its price and description across on save.

@@ -2,18 +2,32 @@
 use PauseCafe\Csrf;
 use PauseCafe\Schedule;
 
-include \PauseCafe\View::locate( 'admin/_tabs' );
-
 $weekdays = array( 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' );
 $mode     = $settings['active_mode'];
 ?>
 
 <h1>Settings</h1>
 
+<?php
+// This screen is long enough that finding the blackout dates means scrolling
+// past everything else.
+$jump = array(
+	'ordering'  => 'Ordering',
+	'locations' => 'Pickup locations',
+	'email'     => 'Email',
+	'kitchen'   => 'Kitchen access',
+	'groups'    => 'Groups',
+	'blackouts' => 'Blackout dates',
+	'zeffy'     => 'Zeffy',
+);
+
+include \PauseCafe\View::locate( 'partials/jump-links' );
+?>
+
 <form method="post" action="/admin/settings">
 	<?= Csrf::field() ?>
 
-	<div class="panel">
+	<div class="panel" id="ordering">
 		<h2>Ordering mode</h2>
 		<p class="muted">One mode is in force at a time. It decides how every dish's window is worked out.</p>
 
@@ -169,7 +183,7 @@ $mode     = $settings['active_mode'];
 	<button type="submit">Save settings</button>
 </form>
 
-<div class="panel">
+<div class="panel" id="locations">
 	<h2>Pickup locations</h2>
 
 	<table>
@@ -196,7 +210,7 @@ $mode     = $settings['active_mode'];
 	</form>
 </div>
 
-<div class="panel">
+<div class="panel" id="email">
 	<h2>Email</h2>
 	<p class="muted">
 		Used for order confirmations, approval notices and a heads-up when someone
@@ -288,7 +302,7 @@ $mode     = $settings['active_mode'];
 	</form>
 </div>
 
-<div class="panel">
+<div class="panel" id="kitchen">
 	<h2>Kitchen list access</h2>
 	<p class="muted">
 		The kitchen list lives at <code>/kitchen</code>. Organisers always see it.
@@ -319,7 +333,7 @@ $mode     = $settings['active_mode'];
 	</form>
 </div>
 
-<div class="panel">
+<div class="panel" id="groups">
 	<h2>Groups</h2>
 	<p class="muted">
 		What people can pick when ordering. Keeping it to a list rather than a text
@@ -372,7 +386,7 @@ $mode     = $settings['active_mode'];
 	<?php endif; ?>
 </div>
 
-<div class="panel">
+<div class="panel" id="blackouts">
 	<h2>Blackout dates</h2>
 	<p class="muted">Days with no lunch. Dishes serving that day are hidden and the label is shown instead.</p>
 
@@ -404,7 +418,7 @@ $mode     = $settings['active_mode'];
 	</form>
 </div>
 
-<div class="panel">
+<div class="panel" id="zeffy">
 	<h2>Zeffy</h2>
 
 	<?php if ( $zeffyOn ) : ?>

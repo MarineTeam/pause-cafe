@@ -12,8 +12,6 @@ use PauseCafe\SignIn;
 use PauseCafe\SignIn\Method;
 use PauseCafe\SignIn\OidcMethod;
 
-include \PauseCafe\View::locate( 'admin/_tabs' );
-
 $routes = SignIn::organiserRoutes();
 ?>
 

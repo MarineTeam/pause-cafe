@@ -16,6 +16,7 @@ php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
 php -d extension=php_pdo_sqlite tests/test-app.php        # 338 assertions
 php -d extension=php_pdo_sqlite tests/test-signin.php     # 120 assertions
 php -d extension=php_pdo_sqlite tests/test-design.php     # 67 assertions
+php -d extension=php_pdo_sqlite tests/test-orders-admin.php # 28 assertions
 ```
 
 **`test-schedule.php`** — window resolution. Each of the three modes on its own,
@@ -120,12 +121,29 @@ that was never uploaded — plus that deleting one only ever touches files in th
 uploads directory whose names match what was written there. The happy path is
 covered over HTTP in `e2e.sh`.
 
+**`test-orders-admin.php`** — reaching orders, and the organiser menu.
+
+The reachability half exists because of a real hole. Deleting a dish that has
+been sold drafts it rather than removing it, which is what keeps the orders
+pointing somewhere — and every date picker was built from *published* dishes, so
+the same act that protected the orders also hid them. The test walks that
+sequence: publish, order, delete, and then assert the menu has forgotten the
+date while the orders have not, and that the vanished dish is reported by name.
+It also covers a dish with no orders being properly deleted rather than drafted,
+and a cancelled order staying visible under its own filter with the money back
+in the wallet.
+
+The navigation half checks that the top-or-side choice belongs to one account
+and not the site, that an unrecognised value falls back to the top, and that the
+current-screen logic picks the longest match — `/admin/menu/builder` lights up
+Menu, while `/admin` only ever matches itself.
+
 ## With a server
 
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 218 assertions
+bash tests/e2e.sh                                          # 238 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token

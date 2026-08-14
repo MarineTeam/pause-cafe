@@ -4,8 +4,6 @@ use PauseCafe\Money;
 use PauseCafe\Schedule;
 use PauseCafe\Window;
 
-include \PauseCafe\View::locate( 'admin/_tabs' );
-
 $labels = array(
 	Window::OPEN     => 'Ordering open',
 	Window::UPCOMING => 'Upcoming',

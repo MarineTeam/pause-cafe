@@ -359,6 +359,11 @@ class Database {
 		// its typographic layout, which is the normal case.
 		self::addColumnIfMissing( 'menu_items', 'image_path', "TEXT NOT NULL DEFAULT ''" );
 
+		// Where this organiser wants the admin navigation: top or side. On the
+		// account rather than in settings, so one organiser's preference is not
+		// imposed on the others.
+		self::addColumnIfMissing( 'users', 'admin_nav', "TEXT NOT NULL DEFAULT 'top'" );
+
 		self::seed();
 	}
 

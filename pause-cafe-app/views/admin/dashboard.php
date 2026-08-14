@@ -3,8 +3,6 @@ use PauseCafe\Money;
 use PauseCafe\Orders;
 use PauseCafe\Schedule;
 
-include \PauseCafe\View::locate( 'admin/_tabs' );
-
 $meals = 0;
 
 foreach ( $summary as $dishes ) {
