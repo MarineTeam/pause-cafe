@@ -902,6 +902,70 @@ want "the rescue tool unlocks it again" \
     -d "email=ada@example.org" -d "password=correct-horse")" "302"
 
 echo ""
+echo "Editing an order"
+# A wallet order of its own, on its own date, so cancelling and refunding here
+# cannot disturb the fixtures the rest of the run depends on.
+T=$(tok $A /admin/menu/new)
+EDITABLE=$(curl -s -o /dev/null -w '%{redirect_url}' -b $A -c $A -X POST "$BASE/admin/menu/save" \
+  -d "_token=$T" -d "name=Editable pie" -d "location_id=1" -d "price=10.00" \
+  -d "status=published" -d "service_date=2026-10-04" \
+  -d "open_from=2026-01-01T00:00" -d "close_at=2027-01-01T00:00" | grep -o '[0-9]*$')
+
+T=$(tok $A /admin/users)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/users/2/wallet" \
+  -d "_token=$T" -d "amount=60.00" -d "direction=credit" -d "note=edit float"
+
+T=$(tok $M /)
+curl -s -o /dev/null -b $M -c $M -X POST "$BASE/cart/add" -d "_token=$T" -d "item_id=$EDITABLE" -d "qty=3"
+curl -s -o /dev/null -b $M -c $M -X POST "$BASE/checkout" \
+  -d "_token=$(tok $M /cart)" -d "payment_method=wallet" -d "line[0][qty]=3"
+
+EDIT_ID=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-10-04" \
+  | sed -n 's|.*/admin/orders/\([0-9]*\)/edit.*|\1|p' | head -1)
+want "the orders list links to the editor" "$([ -n "$EDIT_ID" ] && echo yes || echo no)" "yes"
+want "which opens" "$(code $A "/admin/orders/$EDIT_ID/edit")" "200"
+
+SCREEN=$(curl -s -b $A -c $A "$BASE/admin/orders/$EDIT_ID/edit")
+has "showing what the food is worth" "$SCREEN" "Food now"
+has "and what was actually taken" "$SCREEN" "Taken so far"
+has "and what can still come back" "$SCREEN" "Can still refund"
+
+LINE_ID=$(echo "$SCREEN" | sed -n 's/.*name="line_id" value="\([0-9]*\)".*/\1/p' | head -1)
+want "the line is addressable" "$([ -n "$LINE_ID" ] && echo yes || echo no)" "yes"
+
+# Three at $10 from a $60-ish wallet, then down to one: $20 comes back.
+BEFORE=$(curl -s -b $M -c $M "$BASE/account" | grep -oE '\$[0-9]+\.[0-9]{2}' | head -1)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/$EDIT_ID/edit" \
+  -d "_token=$(tok $A "/admin/orders/$EDIT_ID/edit")" \
+  -d "action=qty" -d "line_id=$LINE_ID" -d "qty=1"
+
+SCREEN=$(curl -s -b $A -c $A "$BASE/admin/orders/$EDIT_ID/edit")
+has "reducing it refunds the difference" "$SCREEN" "Quantity changed"
+has "and the history records it" "$SCREEN" "changed from 3 to 1"
+has "telling the member" "$(cat data/mail.log 2>/dev/null)" "order has changed"
+
+# Refunding more than was paid must be refused outright.
+REFUSED=$(curl -s -b $A -c $A -L -X POST "$BASE/admin/orders/$EDIT_ID/edit" \
+  -d "_token=$(tok $A "/admin/orders/$EDIT_ID/edit")" \
+  -d "action=refund" -d "amount=9999" -d "reason=far too much")
+has "an over-refund is refused" "$REFUSED" "more than was paid"
+
+# And a refund with no reason, since the ledger has to stay readable.
+NOREASON=$(curl -s -b $A -c $A -L -X POST "$BASE/admin/orders/$EDIT_ID/edit" \
+  -d "_token=$(tok $A "/admin/orders/$EDIT_ID/edit")" \
+  -d "action=refund" -d "amount=1.00" -d "reason=")
+has "so is one with no reason" "$NOREASON" "what the refund is for"
+
+# A details-only edit changes the line and sends nothing.
+MAILS=$(grep -c "order has changed" data/mail.log 2>/dev/null || echo 0)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/$EDIT_ID/edit" \
+  -d "_token=$(tok $A "/admin/orders/$EDIT_ID/edit")" \
+  -d "action=details" -d "line_id=$LINE_ID" -d "person_name=Samuel"
+
+has "a details edit lands" "$(curl -s -b $A -c $A "$BASE/admin/orders/$EDIT_ID/edit")" "Samuel"
+want "and emails nobody" "$(grep -c 'order has changed' data/mail.log 2>/dev/null || echo 0)" "$MAILS"
+
+echo ""
 echo "Access control"
 want "a member cannot reach the admin area" "$(code $M /admin)" "403"
 want "a signed-out visitor is redirected from the cart" "$(code /dev/null /cart)" "302"

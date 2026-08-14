@@ -35,6 +35,23 @@ class CodMethod implements Method {
 		// Nothing to take yet. The order carries its own unpaid state.
 	}
 
+	public function adjust(
+		int $userId,
+		int $orderId,
+		int $deltaCents,
+		string $reason,
+		string $reference,
+		?int $byUserId
+	): void {
+		/*
+		 * Nothing to move. Cash that has not been collected simply becomes a
+		 * different amount to collect, and cash already handed over is handed
+		 * back in person. The adjustment is still recorded against the order,
+		 * so the organiser can see what they owe somebody on the day -- it just
+		 * does not pretend the system holds the money.
+		 */
+	}
+
 	public function refund( int $userId, int $orderId, int $totalCents, ?int $byUserId ): void {
 		/*
 		 * If the cash was never collected there is nothing to give back. If it

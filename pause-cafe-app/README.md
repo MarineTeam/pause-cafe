@@ -321,6 +321,39 @@ already been sold turns it into a draft rather than removing it, so the orders
 keep pointing somewhere. The date stays on every organiser screen even though
 nothing published remains on it, and the Orders page names the dish so you are
 not left hunting for something that is no longer on the menu.
+## Editing an order
+
+**Orders → Edit** changes an order that has already been placed, rather than
+making you cancel the whole thing:
+
+- **Change a quantity**, up or down. Zero removes the line. The difference is
+  charged or refunded.
+- **Add a dish** that is on the menu for that day, and charge for it.
+- **Correct a name, group or note** without touching money.
+- **Refund an amount** with a reason, for anything the lines cannot express.
+
+Wallet orders are credited or debited as you go. Cash orders record the change
+and simply owe more or less on the day — the system never held that money, so it
+does not pretend to move it.
+
+The screen carries four figures that are worth understanding, because two of
+them sound alike:
+
+| | |
+| --- | --- |
+| **Food now** | What the remaining lines are worth. Moves as you edit. |
+| **Taken so far** | Money in. Only ever grows. |
+| **Given back** | Money out. |
+| **Can still refund** | Taken minus given back — never more than they paid. |
+
+Keeping "taken" separate from "worth" is what stops an order being edited down to
+nothing and then refunded again for money that was never collected.
+
+Below that is the history: every change, why, who made it, and how much. Wallet
+orders have a matching line on the member's statement.
+
+Raising a quantity respects portion limits the same way ordering does; lowering
+one puts the portions back. A cancelled order can be read but not changed.
 
 ## The kitchen list
 

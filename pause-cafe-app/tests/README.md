@@ -17,6 +17,7 @@ php -d extension=php_pdo_sqlite tests/test-app.php        # 338 assertions
 php -d extension=php_pdo_sqlite tests/test-signin.php     # 120 assertions
 php -d extension=php_pdo_sqlite tests/test-design.php     # 67 assertions
 php -d extension=php_pdo_sqlite tests/test-orders-admin.php # 28 assertions
+php -d extension=php_pdo_sqlite tests/test-order-edits.php # 47 assertions
 ```
 
 **`test-schedule.php`** — window resolution. Each of the three modes on its own,
@@ -137,13 +138,33 @@ The navigation half checks that the top-or-side choice belongs to one account
 and not the site, that an unrecognised value falls back to the top, and that the
 current-screen logic picks the longest match — `/admin/menu/builder` lights up
 Menu, while `/admin` only ever matches itself.
+**`test-order-edits.php`** — editing an order, which is all money.
+
+Every assertion states the arithmetic it expects rather than just checking a
+balance, because a balance that is right for the wrong reason is the failure
+that reaches production. Reducing a line returns the difference and frees the
+portions; adding one charges and respects the portion limit; a dish for another
+date is refused; a goodwill refund needs both an amount and a reason and is
+capped at what was actually taken; refunds can never total more than that, even
+across several; a cash order records the change but writes no ledger entry; a
+cancelled order refuses everything; and a line id from a different order is not
+reachable.
+
+The one that earns its place most is the last: it sums the wallet entries
+belonging to the order and checks they equal the negative of what the order says
+it is holding. Everything else reads the order's own figures, which stayed
+perfectly self-consistent while the money went the wrong way — the first version
+debited members for reducing an order and credited them for adding food, because
+the order-value delta and the wallet delta have opposite signs. Reintroducing
+that inversion fails seven assertions; without it, none.
 
 ## With a server
 
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 238 assertions
+bash tests/e2e.sh                                          # 251 assertions
+bash tests/e2e.sh                                          # 226 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token

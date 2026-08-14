@@ -355,6 +355,44 @@ class Database {
 		// Answers to any field beyond the three built-in ones, as JSON.
 		self::addColumnIfMissing( 'order_lines', 'extra_fields', "TEXT NOT NULL DEFAULT ''" );
 
+		/*
+		 * What an order has actually taken from somebody, as opposed to what it
+		 * is currently worth.
+		 *
+		 * orders.total_cents is the value of the food and moves when the lines
+		 * are edited. This is money, and only ever goes up: it is what was
+		 * charged at checkout plus anything charged since. Refunds are capped
+		 * against it, so nobody can be given back more than they put in.
+		 */
+		if ( self::addColumnIfMissing( 'orders', 'charged_cents', 'INTEGER NOT NULL DEFAULT 0' ) ) {
+			// Orders that predate the column were charged their total and
+			// never adjusted. Runs on the one migration that adds the column.
+			$pdo->exec( 'UPDATE orders SET charged_cents = total_cents' );
+		}
+
+		/*
+		 * Every movement of money against an order after checkout, in the
+		 * organiser's words.
+		 *
+		 * The wallet ledger already records the money for wallet orders, but it
+		 * says nothing for a cash one, and it is organised by person rather than
+		 * by order. This is the per-order story: what changed, why, and who did
+		 * it -- which is what somebody looking at a refund six weeks later
+		 * actually needs.
+		 */
+		$pdo->exec(
+			"CREATE TABLE IF NOT EXISTS order_adjustments (
+				id          INTEGER PRIMARY KEY AUTOINCREMENT,
+				order_id    INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+				delta_cents INTEGER NOT NULL,
+				reason      TEXT    NOT NULL DEFAULT '',
+				by_user_id  INTEGER NULL REFERENCES users(id) ON DELETE SET NULL,
+				created_at  TEXT    NOT NULL
+			)"
+		);
+
+		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_adjustment_order ON order_adjustments (order_id, id)' );
+
 		// Public URL of an uploaded photo. Empty means the card falls back to
 		// its typographic layout, which is the normal case.
 		self::addColumnIfMissing( 'menu_items', 'image_path', "TEXT NOT NULL DEFAULT ''" );
@@ -373,16 +411,22 @@ class Database {
 	 * Table and column names come from this file only, never from a request, so
 	 * interpolating them is safe -- SQLite cannot bind identifiers anyway.
 	 */
-	private static function addColumnIfMissing( string $table, string $column, string $definition ): void {
+	/**
+	 * @return bool True only on the run that actually added it, so a caller can
+	 *              backfill exactly once without needing a flag of its own.
+	 */
+	private static function addColumnIfMissing( string $table, string $column, string $definition ): bool {
 		$pdo = self::pdo();
 
 		foreach ( $pdo->query( 'PRAGMA table_info(' . $table . ')' )->fetchAll() as $existing ) {
 			if ( $existing['name'] === $column ) {
-				return;
+				return false;
 			}
 		}
 
 		$pdo->exec( 'ALTER TABLE ' . $table . ' ADD COLUMN ' . $column . ' ' . $definition );
+
+		return true;
 	}
 
 	private static function seed(): void {

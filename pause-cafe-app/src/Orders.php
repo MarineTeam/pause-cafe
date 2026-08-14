@@ -144,14 +144,23 @@ class Orders {
 
 			$statement = $pdo->prepare(
 				'INSERT INTO orders
-					(user_id, service_date, total_cents, status, placed_by, note, created_at, payment_method, paid_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+					(user_id, service_date, total_cents, charged_cents, status, placed_by, note,
+					 created_at, payment_method, paid_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
 			);
 
 			$statement->execute(
 				array(
 					$userId,
 					$serviceDate,
+					$total,
+					/*
+					 * What this order has taken, as opposed to what it is worth.
+					 * They start equal and then diverge: editing the lines moves
+					 * total_cents, while this only ever grows, and refunds are
+					 * capped against it so nobody is given back more than they
+					 * put in.
+					 */
 					$total,
 					'confirmed',
 					$placedBy,
@@ -255,6 +264,398 @@ class Orders {
 	 * ledger is what actually moved, and it is the same thing the member sees on
 	 * their statement.
 	 */
+	/* ---------------------------------------------------------------------
+	 * Editing an order after it was placed
+	 * ------------------------------------------------------------------ */
+
+	/**
+	 * Every money movement recorded against an order, oldest first.
+	 *
+	 * @return array[]
+	 */
+	public static function adjustments( int $orderId ): array {
+		$statement = Database::pdo()->prepare(
+			'SELECT a.*, u.name AS by_name
+			 FROM order_adjustments a
+			 LEFT JOIN users u ON u.id = a.by_user_id
+			 WHERE a.order_id = ? ORDER BY a.id'
+		);
+
+		$statement->execute( array( $orderId ) );
+
+		return $statement->fetchAll();
+	}
+
+	/** How much has been given back so far. */
+	public static function refundedCents( int $orderId ): int {
+		$statement = Database::pdo()->prepare(
+			'SELECT COALESCE(-SUM(delta_cents), 0) FROM order_adjustments
+			 WHERE order_id = ? AND delta_cents < 0'
+		);
+
+		$statement->execute( array( $orderId ) );
+
+		return (int) $statement->fetchColumn();
+	}
+
+	/**
+	 * The most that can still be given back.
+	 *
+	 * Capped at what was actually taken, never at what the food is worth. An
+	 * order edited down to nothing and then refunded twice would otherwise hand
+	 * out money that was never collected.
+	 */
+	public static function refundableCents( int $orderId ): int {
+		$order = self::find( $orderId );
+
+		if ( ! $order ) {
+			return 0;
+		}
+
+		return max( 0, (int) $order['charged_cents'] - self::refundedCents( $orderId ) );
+	}
+
+	/**
+	 * Records a movement and, if the payment method holds the money, makes it.
+	 *
+	 * The one place either happens, so the record and the money cannot drift
+	 * apart. Callers are already inside a transaction.
+	 *
+	 * @param int $deltaCents Positive takes more; negative gives money back.
+	 *
+	 * @throws \RuntimeException When a refund would exceed what was charged.
+	 */
+	private static function adjust( array $order, int $deltaCents, string $reason, ?int $byUserId ): void {
+		if ( 0 === $deltaCents ) {
+			return;
+		}
+
+		$orderId = (int) $order['id'];
+
+		if ( $deltaCents < 0 && -$deltaCents > self::refundableCents( $orderId ) ) {
+			throw new \RuntimeException(
+				'That would refund more than was paid for this order. '
+				. Money::format( self::refundableCents( $orderId ) ) . ' is left.'
+			);
+		}
+
+		$pdo = Database::pdo();
+
+		$statement = $pdo->prepare(
+			'INSERT INTO order_adjustments (order_id, delta_cents, reason, by_user_id, created_at)
+			 VALUES (?, ?, ?, ?, ?)'
+		);
+
+		$statement->execute(
+			array( $orderId, $deltaCents, $reason, $byUserId, gmdate( 'Y-m-d H:i:s' ) )
+		);
+
+		// Taking more raises what this order has collected; giving back does
+		// not lower it, because it is a record of money in, and the refunds are
+		// counted separately.
+		if ( $deltaCents > 0 ) {
+			$pdo->prepare( 'UPDATE orders SET charged_cents = charged_cents + ? WHERE id = ?' )
+				->execute( array( $deltaCents, $orderId ) );
+		}
+
+		$method = Payments::get( (string) $order['payment_method'] );
+
+		if ( $method ) {
+			$method->adjust(
+				(int) $order['user_id'],
+				$orderId,
+				$deltaCents,
+				$reason,
+				// The row id makes it unique, so repeated movements never
+				// collide on the wallet's idempotency index.
+				'adjust:' . $orderId . ':' . $pdo->lastInsertId(),
+				$byUserId
+			);
+		}
+	}
+
+	/**
+	 * Changes how many of one line, moving the difference.
+	 *
+	 * Setting it to zero removes the line. Everything happens in one
+	 * transaction: the line, the total and the money either all move or none
+	 * of them do.
+	 *
+	 * @throws \RuntimeException
+	 */
+	public static function setLineQty( int $orderId, int $lineId, int $qty, ?int $byUserId = null ): void {
+		$order = self::editableOrder( $orderId );
+		$line  = self::line( $orderId, $lineId );
+
+		$qty = max( 0, $qty );
+		$was = (int) $line['qty'];
+
+		if ( $qty === $was ) {
+			return;
+		}
+
+		// Going up has to fit in whatever portions are left, the same rule an
+		// order placed on the storefront lives by.
+		if ( $qty > $was ) {
+			self::assertPortionsFor( $line, $qty - $was );
+		}
+
+		$unit  = (int) $line['unit_price_cents'];
+		$delta = ( $qty - $was ) * $unit;
+
+		$pdo = Database::pdo();
+		self::begin( $pdo );
+
+		try {
+			if ( 0 === $qty ) {
+				$pdo->prepare( 'DELETE FROM order_lines WHERE id = ?' )->execute( array( $lineId ) );
+			} else {
+				$pdo->prepare( 'UPDATE order_lines SET qty = ? WHERE id = ?' )->execute( array( $qty, $lineId ) );
+			}
+
+			self::retotal( $orderId );
+
+			self::adjust(
+				$order,
+				$delta,
+				0 === $qty
+					? 'Removed ' . $line['item_name']
+					: $line['item_name'] . ' changed from ' . $was . ' to ' . $qty,
+				$byUserId
+			);
+
+			self::commit( $pdo );
+		} catch ( \Throwable $e ) {
+			self::rollback( $pdo );
+
+			throw $e;
+		}
+	}
+
+	/**
+	 * Adds a dish to an existing order, charging for it.
+	 *
+	 * @throws \RuntimeException
+	 */
+	public static function addLine( int $orderId, int $menuItemId, int $qty, array $answers = array(), ?int $byUserId = null ): void {
+		$order = self::editableOrder( $orderId );
+		$qty   = max( 1, $qty );
+		$item  = Menu::item( $menuItemId );
+
+		if ( ! $item ) {
+			throw new \RuntimeException( 'That dish does not exist.' );
+		}
+
+		if ( (string) $item['service_date'] !== (string) $order['service_date'] ) {
+			throw new \RuntimeException( 'That dish is for a different date.' );
+		}
+
+		self::assertPortionsFor( array( 'menu_item_id' => $menuItemId ), $qty );
+
+		$unit  = (int) $item['price_cents'];
+		$delta = $unit * $qty;
+
+		$fields = MenuFields::collect( $item, $answers, Users::find( (int) $order['user_id'] ) );
+
+		$pdo = Database::pdo();
+		self::begin( $pdo );
+
+		try {
+			$statement = $pdo->prepare(
+				'INSERT INTO order_lines
+					(order_id, menu_item_id, item_name, location_name, qty, unit_price_cents,
+					 person_name, group_name, note, extra_fields)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+			);
+
+			$statement->execute(
+				array(
+					$orderId,
+					$menuItemId,
+					(string) $item['name'],
+					(string) $item['location_name'],
+					$qty,
+					$unit,
+					(string) ( $fields[ MenuFields::PERSON ] ?? '' ),
+					(string) ( $fields[ MenuFields::GROUP ] ?? '' ),
+					(string) ( $fields[ MenuFields::NOTE ] ?? '' ),
+					self::encodeExtras( $fields ),
+				)
+			);
+
+			self::retotal( $orderId );
+			self::adjust( $order, $delta, 'Added ' . $qty . ' × ' . $item['name'], $byUserId );
+
+			self::commit( $pdo );
+		} catch ( \Throwable $e ) {
+			self::rollback( $pdo );
+
+			throw $e;
+		}
+	}
+
+	/**
+	 * Corrects who a meal is for, without touching money.
+	 *
+	 * Kept apart from the quantity so a typo in a name can never move a penny,
+	 * and so the kitchen list can be fixed after the cutoff without anything
+	 * being refunded.
+	 */
+	public static function setLineDetails( int $orderId, int $lineId, array $answers ): void {
+		$line = self::line( $orderId, $lineId );
+		$item = $line['menu_item_id'] ? Menu::item( (int) $line['menu_item_id'] ) : null;
+
+		// A dish that has since been deleted still has a line to correct, so
+		// fall back to the built-in fields rather than refusing.
+		$fields = $item
+			? MenuFields::collect( $item, $answers, null )
+			: array(
+				MenuFields::PERSON => trim( (string) ( $answers[ MenuFields::PERSON ] ?? '' ) ),
+				MenuFields::GROUP  => Groups::sanitise( (string) ( $answers[ MenuFields::GROUP ] ?? '' ) ),
+				MenuFields::NOTE   => trim( (string) ( $answers[ MenuFields::NOTE ] ?? '' ) ),
+			);
+
+		$statement = Database::pdo()->prepare(
+			'UPDATE order_lines SET person_name = ?, group_name = ?, note = ?, extra_fields = ? WHERE id = ?'
+		);
+
+		$statement->execute(
+			array(
+				(string) ( $fields[ MenuFields::PERSON ] ?? '' ),
+				(string) ( $fields[ MenuFields::GROUP ] ?? '' ),
+				(string) ( $fields[ MenuFields::NOTE ] ?? '' ),
+				$item ? self::encodeExtras( $fields ) : (string) $line['extra_fields'],
+				$lineId,
+			)
+		);
+	}
+
+	/**
+	 * Gives back an amount that is not tied to a line — a goodwill gesture, or
+	 * putting right something the lines cannot express.
+	 *
+	 * @throws \RuntimeException
+	 */
+	public static function refundAmount( int $orderId, int $cents, string $reason, ?int $byUserId = null ): void {
+		$order  = self::editableOrder( $orderId );
+		$cents  = abs( $cents );
+		$reason = trim( $reason );
+
+		if ( $cents <= 0 ) {
+			throw new \RuntimeException( 'Enter an amount to refund.' );
+		}
+
+		if ( '' === $reason ) {
+			// Required, because a bare number in the ledger months later
+			// explains nothing to whoever is reconciling it.
+			throw new \RuntimeException( 'Say what the refund is for.' );
+		}
+
+		$pdo = Database::pdo();
+		self::begin( $pdo );
+
+		try {
+			self::adjust( $order, -$cents, $reason, $byUserId );
+
+			self::commit( $pdo );
+		} catch ( \Throwable $e ) {
+			self::rollback( $pdo );
+
+			throw $e;
+		}
+	}
+
+	/**
+	 * Answers to fields the organiser added, as stored on a line.
+	 *
+	 * The three built-ins have columns of their own; everything else is frozen
+	 * as JSON so a later field rename cannot rewrite what somebody asked for.
+	 * Mirrors what place() does at checkout — an edited line has to be shaped
+	 * exactly like one that was never edited.
+	 */
+	private static function encodeExtras( array $fields ): string {
+		$extra = $fields;
+
+		unset( $extra[ MenuFields::PERSON ], $extra[ MenuFields::GROUP ], $extra[ MenuFields::NOTE ] );
+
+		$extra = array_filter( $extra, static fn( $value ): bool => '' !== (string) $value );
+
+		return $extra ? (string) json_encode( $extra ) : '';
+	}
+
+	/**
+	 * @throws \RuntimeException When the order cannot be edited.
+	 */
+	private static function editableOrder( int $orderId ): array {
+		$order = self::find( $orderId );
+
+		if ( ! $order ) {
+			throw new \RuntimeException( 'That order does not exist.' );
+		}
+
+		if ( 'cancelled' === $order['status'] ) {
+			throw new \RuntimeException( 'That order is cancelled. Nothing more can be changed on it.' );
+		}
+
+		return $order;
+	}
+
+	/**
+	 * @throws \RuntimeException When the line is not on that order.
+	 */
+	private static function line( int $orderId, int $lineId ): array {
+		$statement = Database::pdo()->prepare( 'SELECT * FROM order_lines WHERE id = ? AND order_id = ?' );
+		$statement->execute( array( $lineId, $orderId ) );
+
+		$line = $statement->fetch();
+
+		if ( ! $line ) {
+			throw new \RuntimeException( 'That line is not on this order.' );
+		}
+
+		return $line;
+	}
+
+	/**
+	 * @throws \RuntimeException When there are not enough portions left.
+	 */
+	private static function assertPortionsFor( array $line, int $extra ): void {
+		$itemId = (int) ( $line['menu_item_id'] ?? 0 );
+
+		if ( ! $itemId ) {
+			return;
+		}
+
+		$item = Menu::item( $itemId );
+
+		if ( ! $item || null === $item['remaining'] ) {
+			return;
+		}
+
+		if ( $extra > (int) $item['remaining'] ) {
+			throw new \RuntimeException(
+				'Only ' . (int) $item['remaining'] . ' portion(s) of ' . $item['name'] . ' left.'
+			);
+		}
+	}
+
+	/** Recalculates the stored total from whatever lines remain. */
+	private static function retotal( int $orderId ): int {
+		$pdo = Database::pdo();
+
+		$statement = $pdo->prepare(
+			'SELECT COALESCE(SUM(qty * unit_price_cents), 0) FROM order_lines WHERE order_id = ?'
+		);
+
+		$statement->execute( array( $orderId ) );
+
+		$total = (int) $statement->fetchColumn();
+
+		$pdo->prepare( 'UPDATE orders SET total_cents = ? WHERE id = ?' )->execute( array( $total, $orderId ) );
+
+		return $total;
+	}
+
 	public static function refundEntryFor( int $orderId ): ?array {
 		$statement = Database::pdo()->prepare(
 			'SELECT * FROM wallet_entries WHERE kind = ? AND reference = ? LIMIT 1'

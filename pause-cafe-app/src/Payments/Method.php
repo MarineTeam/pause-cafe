@@ -50,4 +50,26 @@ interface Method {
 	 * same rules as charge().
 	 */
 	public function refund( int $userId, int $orderId, int $totalCents, ?int $byUserId ): void;
+
+	/**
+	 * Moves money after the order was placed, for an edit or a partial refund.
+	 *
+	 * Separate from charge() and refund() rather than a parameter on them,
+	 * because those two carry fixed wallet references — `order:12`, `refund:12`
+	 * — and a unique index makes each usable exactly once. That is deliberate:
+	 * it is what stops a redelivered Zeffy webhook crediting twice. An edited
+	 * order needs many movements, so each brings its own reference instead of
+	 * loosening the guard that protects the other two.
+	 *
+	 * @param int    $deltaCents Positive takes more; negative gives money back.
+	 * @param string $reference  Unique per movement.
+	 */
+	public function adjust(
+		int $userId,
+		int $orderId,
+		int $deltaCents,
+		string $reason,
+		string $reference,
+		?int $byUserId
+	): void;
 }

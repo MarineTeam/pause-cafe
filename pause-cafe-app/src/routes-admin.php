@@ -701,6 +701,122 @@ $router->post(
 	}
 );
 
+/* ------------------------------------------------------- Editing one order */
+
+$router->get(
+	'/admin/orders/{id}/edit',
+	static function ( string $id ) use ( $requireAdmin ): void {
+		$requireAdmin();
+
+		$orderId = (int) $id;
+		$order   = Orders::find( $orderId );
+
+		if ( ! $order ) {
+			http_response_code( 404 );
+			echo View::render( 'error', array( 'title' => 'Not found', 'message' => 'No such order.' ) );
+
+			return;
+		}
+
+		echo View::render(
+			'admin/order-edit',
+			array(
+				'title'       => 'Order #' . $orderId,
+				'order'       => $order,
+				'lines'       => Orders::lines( $orderId ),
+				'adjustments' => Orders::adjustments( $orderId ),
+				'refundable'  => Orders::refundableCents( $orderId ),
+				'balance'     => Wallet::balance( (int) $order['user_id'] ),
+				// Anything else being served that day, to add to the order.
+				'available'   => Menu::itemsForServiceDate( (string) $order['service_date'] ),
+			)
+		);
+	}
+);
+
+/**
+ * Every edit to one order arrives here.
+ *
+ * One route rather than four, because they share the guard, the redirect and
+ * the "tell them what changed" step, and because an organiser pressing two
+ * buttons on one screen should not have to think about which endpoint each one
+ * goes to.
+ */
+$router->post(
+	'/admin/orders/{id}/edit',
+	static function ( string $id ) use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$orderId = (int) $id;
+		$back    = '/admin/orders/' . $orderId . '/edit';
+		$before  = Orders::find( $orderId );
+
+		if ( ! $before ) {
+			View::redirect( '/admin/orders' );
+		}
+
+		try {
+			switch ( $post( 'action' ) ) {
+				case 'qty':
+					Orders::setLineQty(
+						$orderId,
+						(int) ( $_POST['line_id'] ?? 0 ),
+						(int) ( $_POST['qty'] ?? 0 ),
+						Auth::id()
+					);
+
+					$note = 'Quantity changed.';
+					break;
+
+				case 'details':
+					Orders::setLineDetails( $orderId, (int) ( $_POST['line_id'] ?? 0 ), $_POST );
+
+					$note = 'Details corrected. Nothing was charged or refunded.';
+					break;
+
+				case 'add':
+					Orders::addLine(
+						$orderId,
+						(int) ( $_POST['menu_item_id'] ?? 0 ),
+						(int) ( $_POST['qty'] ?? 1 ),
+						$_POST,
+						Auth::id()
+					);
+
+					$note = 'Dish added.';
+					break;
+
+				case 'refund':
+					Orders::refundAmount( $orderId, Money::parse( $post( 'amount' ) ), $post( 'reason' ), Auth::id() );
+
+					$note = 'Refunded.';
+					break;
+
+				default:
+					View::flash( 'error', 'Pick something to change.' );
+					View::redirect( $back );
+			}
+		} catch ( \RuntimeException $e ) {
+			View::flash( 'error', $e->getMessage() );
+			View::redirect( $back );
+		}
+
+		$after = Orders::find( $orderId );
+
+		// Only worth an email when the order actually moved. Correcting a
+		// spelling is not news, and a message for every keystroke trains people
+		// to ignore the ones that matter.
+		if ( (int) $before['total_cents'] !== (int) $after['total_cents'] && ! isset( $_POST['quiet'] ) ) {
+			Notifications::orderChanged( $orderId, (int) $before['total_cents'] );
+			$note .= ' They have been emailed.';
+		}
+
+		View::flash( 'success', $note );
+		View::redirect( $back );
+	}
+);
+
 $router->get(
 	'/admin/orders/new',
 	static function () use ( $requireAdmin, $query ): void {

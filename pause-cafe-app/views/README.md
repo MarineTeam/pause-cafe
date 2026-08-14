@@ -66,8 +66,11 @@ listed)" rather than being silently dropped.
 
 ## `admin/`
 
-`_tabs.php` is included at the top of every admin template and marks the current
-tab from the request path.
+`_nav.php` is the organiser navigation, rendered by the **layout** rather than
+included by each template. It has to be able to sit beside the page content in
+the side arrangement, which a template included at the top of that content
+cannot do. `AdminNav` owns the list of screens and works out which one is
+current from the request path.
 
 | | |
 | --- | --- |
