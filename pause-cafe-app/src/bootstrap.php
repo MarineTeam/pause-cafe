@@ -6,7 +6,7 @@
 declare(strict_types=1);
 
 // Kept in step with CHANGELOG.md.
-defined( 'PAUSE_CAFE_VERSION' ) || define( 'PAUSE_CAFE_VERSION', '0.9.1' );
+defined( 'PAUSE_CAFE_VERSION' ) || define( 'PAUSE_CAFE_VERSION', '0.10.0' );
 
 spl_autoload_register(
 	static function ( string $class ): void {
@@ -32,6 +32,7 @@ use PauseCafe\Mailer;
 use PauseCafe\Money;
 use PauseCafe\Payments;
 use PauseCafe\Schedule;
+use PauseCafe\SignIn;
 use PauseCafe\View;
 use PauseCafe\Zeffy;
 
@@ -67,6 +68,10 @@ Payments::boot();
 
 LogTransport::configure( dirname( (string) $config['database'] ) . '/mail.log' );
 Mailer::boot();
+
+// Same again for the ways of signing in. A site with its own identity provider
+// would subclass OidcMethod and SignIn::register() it here.
+SignIn::boot();
 
 if ( ! function_exists( 'e' ) ) {
 	/**

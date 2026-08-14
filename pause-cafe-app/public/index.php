@@ -18,6 +18,7 @@ use PauseCafe\Csrf;
 use PauseCafe\Database;
 use PauseCafe\Groups;
 use PauseCafe\Kitchen;
+use PauseCafe\LoginTokens;
 use PauseCafe\Menu;
 use PauseCafe\MenuFields;
 use PauseCafe\Money;
@@ -28,6 +29,8 @@ use PauseCafe\Router;
 use PauseCafe\Schedule;
 use PauseCafe\Schedules;
 use PauseCafe\Settings;
+use PauseCafe\SignIn;
+use PauseCafe\SignIn\Outcome;
 use PauseCafe\Users;
 use PauseCafe\View;
 use PauseCafe\Wallet;
@@ -164,9 +167,42 @@ $router->get(
 	}
 );
 
+/*
+ * Signing in.
+ *
+ * The routes know nothing about passwords, links or OpenID Connect. They ask
+ * the register which methods are on, hand the chosen one the input, and act on
+ * the Outcome it returns. A fifth way to sign in needs no change here.
+ */
+
+/** Turns an Outcome into a response, whichever method produced it. */
+$finishSignIn = static function ( Outcome $outcome, string $back = '/login' ): void {
+	if ( $outcome->isAuthenticated() ) {
+		$user = $outcome->user();
+
+		Auth::login( $user );
+
+		// Any outstanding sign-in link is now spent -- they are in.
+		LoginTokens::revokeFor( (int) $user['id'] );
+
+		if ( ! Users::canOrder( $user ) && ! Users::isAdmin( $user ) ) {
+			View::flash( 'notice', 'You are signed in. An organiser still has to approve you before you can order.' );
+		}
+
+		View::redirect( Users::isAdmin( $user ) ? '/admin' : '/' );
+	}
+
+	if ( Outcome::REDIRECT === $outcome->kind() ) {
+		View::redirect( $outcome->url() );
+	}
+
+	View::flash( Outcome::NOTICE === $outcome->kind() ? 'success' : 'error', $outcome->message() );
+	View::redirect( $back );
+};
+
 $router->get(
 	'/login',
-	static function (): void {
+	static function () use ( $query ): void {
 		if ( Database::needsSetup() ) {
 			View::redirect( '/setup' );
 		}
@@ -175,25 +211,103 @@ $router->get(
 			View::redirect( '/' );
 		}
 
-		echo View::render( 'login', array( 'title' => 'Sign in' ) );
+		echo View::render(
+			'login',
+			array(
+				'title'   => 'Sign in',
+				'methods' => SignIn::available(),
+				// The way back in when an identity provider has been set up
+				// wrongly. Only ever reached by asking for it directly.
+				'rescue'  => '' !== $query( 'rescue' ) && SignIn::rescueOffered(),
+			)
+		);
 	}
 );
 
 $router->post(
 	'/login',
-	static function () use ( $post ): void {
+	static function () use ( $post, $finishSignIn ): void {
 		Csrf::verify();
 
-		$user = Users::authenticate( $post( 'email' ), (string) ( $_POST['password'] ?? '' ) );
+		$id = $post( 'method', 'password' );
 
-		if ( ! $user ) {
-			View::flash( 'error', 'That email and password did not match.' );
+		if ( ! SignIn::isAvailable( $id ) ) {
+			View::flash( 'error', 'That way of signing in is not available.' );
 			View::redirect( '/login' );
 		}
 
-		Auth::login( $user );
+		$finishSignIn(
+			SignIn::resolve( $id )->start(
+				array(
+					'email'    => $post( 'email' ),
+					'password' => (string) ( $_POST['password'] ?? '' ),
+				)
+			)
+		);
+	}
+);
 
-		View::redirect( Users::isAdmin( $user ) ? '/admin' : '/' );
+/*
+ * The organiser way back in.
+ *
+ * Members use whatever the organisers chose; this stays on a password so a
+ * mistyped client secret costs one sign-in rather than the whole site. It is
+ * for organisers only -- a member reaching it is told to use the front door,
+ * which keeps it from quietly undoing the chosen method for everybody.
+ */
+$router->post(
+	'/login/rescue',
+	static function () use ( $post ): void {
+		Csrf::verify();
+
+		if ( ! SignIn::rescueAllowed() ) {
+			View::flash( 'error', 'The organiser password sign-in is switched off.' );
+			View::redirect( '/login' );
+		}
+
+		$user = Users::authenticate( $post( 'email' ), (string) ( $_POST['password'] ?? '' ) );
+
+		if ( ! $user || ! Users::isAdmin( $user ) ) {
+			View::flash( 'error', 'That email and password did not match an organiser account.' );
+			View::redirect( '/login?rescue=1' );
+		}
+
+		Auth::login( $user );
+		View::redirect( '/admin' );
+	}
+);
+
+/** Leaves for an identity provider. */
+$router->post(
+	'/auth/{provider}/start',
+	static function ( string $provider ) use ( $finishSignIn ): void {
+		Csrf::verify();
+
+		if ( ! SignIn::isAvailable( $provider ) ) {
+			View::flash( 'error', 'That way of signing in is not available.' );
+			View::redirect( '/login' );
+		}
+
+		$finishSignIn( SignIn::resolve( $provider )->start( array() ) );
+	}
+);
+
+/**
+ * Comes back from one.
+ *
+ * Also where an emailed sign-in link lands, which is why it is a GET: the
+ * second half of a sign-in arrives as somebody following a URL, whether that
+ * URL came from an inbox or from a provider's redirect.
+ */
+$router->get(
+	'/auth/{provider}/callback',
+	static function ( string $provider ) use ( $finishSignIn ): void {
+		if ( ! SignIn::isAvailable( $provider ) ) {
+			View::flash( 'error', 'That way of signing in is not available.' );
+			View::redirect( '/login' );
+		}
+
+		$finishSignIn( SignIn::resolve( $provider )->finish( $_GET ) );
 	}
 );
 
@@ -201,6 +315,13 @@ $router->post(
 	'/logout',
 	static function (): void {
 		Csrf::verify();
+
+		$id = Auth::id();
+
+		if ( $id ) {
+			LoginTokens::revokeFor( $id );
+		}
+
 		Auth::logout();
 		View::redirect( '/' );
 	}

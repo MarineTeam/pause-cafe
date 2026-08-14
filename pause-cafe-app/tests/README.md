@@ -14,6 +14,7 @@ each run and never touching `data/`.
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
 php -d extension=php_pdo_sqlite tests/test-app.php        # 332 assertions
+php -d extension=php_pdo_sqlite tests/test-signin.php     # 86 assertions
 ```
 
 **`test-schedule.php`** — window resolution. Each of the three modes on its own,
@@ -52,12 +53,38 @@ Cancellation gets all three of its outcomes checked — refunded to the wallet,
 paid in cash, never charged — including that the two non-wallet cases write no
 ledger entry and the email does not claim one.
 
+**`test-signin.php`** — the ways in. Its first third signs real tokens with a
+real RSA key and puts them through the same verifier the live path uses, so the
+crypto is exercised rather than assumed: a good token passes, and one that has
+been edited, signed with the wrong key, left unsigned, switched to HMAC over the
+provider's public key, issued for another application, issued by another issuer,
+replayed with an old nonce, expired, or signed with a key that was rotated away
+is refused. Key rotation is covered both ways — either published key verifies
+its own token, neither verifies the other's.
+
+The rest is what this site does with the answer. One-time links: single use,
+expiry either side of the minute, a burst limit per account, and signing out
+killing anything still sitting in an inbox. Identity linking: the approval gate
+surviving an external sign-in, an unconfirmed address matching nothing, the link
+being keyed on the provider's subject rather than the address — so somebody who
+later inherits an address at the provider gets their own account and not the
+first person's — passwordless accounts refusing every password, and deleting
+somebody taking their links and tokens with them. Finally the register: the
+fallback that puts passwords back when everything else is off or misconfigured,
+and the organiser rescue.
+
+`fixtures-keys.php` holds three throwaway RSA keys. They are fixed rather than
+generated because `openssl_pkey_new()` needs an `openssl.cnf` that many PHP
+builds cannot find — including the one this was written on — and a test that
+only runs on a tidy OpenSSL installation is a test that stops running. Signing
+and verifying need no config. The keys are public and protect nothing.
+
 ## With a server
 
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 136 assertions
+bash tests/e2e.sh                                          # 166 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token
@@ -67,6 +94,12 @@ discarded, a wallet top-up, add-to-cart, checkout debiting the balance, a dish
 selling out at its portion limit, the kitchen report, the CSV export, a cash
 order placed and later marked paid by an organiser, and a member getting 403
 from the admin area.
+
+It also drives the sign-in methods over real HTTP: the login page rendering
+whatever is switched on, an emailed link arriving in `data/mail.log` and signing
+that person in exactly once, an unknown address getting the identical answer and
+no email, and — with passwords switched off for members — an organiser still
+getting in through the rescue while a member cannot.
 
 It expects an **empty** database, since it drives setup itself. Override the
 address with `BASE=http://... bash tests/e2e.sh`.
@@ -102,3 +135,10 @@ Two habits worth keeping:
 Concurrency, load, and any real Zeffy account. The webhook is tested against
 synthetic payloads whose shape is an assumption — see the note in the main
 README.
+
+**No real identity provider.** The token verification is tested properly,
+because that can be done offline. Everything either side of it — the redirect
+Auth0 actually sends, the shape of a Supabase token response, whether a callback
+URL was allowed — has only ever been exercised against what the specifications
+say, never against an account. Expect the first live attempt to fail on
+something small, most likely the callback URL.

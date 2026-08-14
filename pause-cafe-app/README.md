@@ -13,6 +13,10 @@ Version history is in [CHANGELOG.md](CHANGELOG.md).
 
 - PHP 8.1 or newer with `pdo_sqlite`
 - Anywhere that runs WordPress will run this
+- `curl` and `openssl` only if you sign people in through Auth0 or Supabase.
+  Both are present on almost every host; without them those two methods report
+  themselves as unavailable rather than failing at the moment somebody tries to
+  sign in. Passwords and emailed links need neither.
 
 ## First run
 
@@ -78,6 +82,46 @@ and a blackout date voids the window entirely.
 
 Defaults reproduce the current rhythm: served Sunday, opens Tuesday noon, closes
 Saturday 1pm.
+
+## Signing in
+
+Several ways, each switched on or off under **Signing in**. More than one can
+run at a time, so a congregation moving to a provider can leave passwords on for
+whoever has not moved yet.
+
+| Method | What it is | Setup |
+| --- | --- | --- |
+| **Password** | An address and a password kept here. What the site has always done. | None |
+| **Email a sign-in link** | They type their address, we email a link that signs them in once. No password to forget. | Email has to be working |
+| **Auth0** | They sign in at your Auth0 tenant and come back. | Domain, client ID, client secret |
+| **Supabase** | They sign in through a Supabase project, which brokers Google, GitHub and the rest. | Project URL, anon key, provider |
+
+**Signing in is not permission to order.** Whichever method somebody uses, a
+first-time signer lands unapproved and an organiser still has to let them in
+before they can buy lunch. Nothing an identity provider says can change that,
+and nothing it says can make anybody an organiser.
+
+**Accounts are matched on the provider's subject, not the email address.** The
+first time somebody signs in with a provider, their address decides which
+account they join — and only if the provider says it has confirmed that address.
+After that the link holds even if they change their address at the provider. The
+alternative, matching on the address every time, would mean whoever inherits an
+address at work inherits the wallet that went with it.
+
+**You cannot lock yourself out.** Two things see to it: if every method is off
+or misconfigured the password comes back on by itself, and "organisers can
+always sign in with a password" stays on unless you turn it off, which keeps
+`/login?rescue=1` working for organisers no matter what members use. A mistyped
+client secret should cost one sign-in, not the site.
+
+### Adding another provider
+
+Anything speaking OpenID Connect — Google, Microsoft Entra, Keycloak, Authentik
+— is a subclass of `OidcMethod` of about forty lines, saying only where its
+endpoints are; `Auth0Method` is the worked example. Register it in
+`src/bootstrap.php` next to the others and it appears on both the settings
+screen and the login page, with its own fields, without either of those files
+changing.
 
 ## Ordering
 
@@ -304,7 +348,8 @@ members pay through a Zeffy form and the webhook tells us about it.
 
 ## What organisers can do
 
-Approve and edit accounts, reset passwords, credit and debit wallets, manage the
+Approve and edit accounts, choose how people sign in, unlink an external
+account, reset passwords, credit and debit wallets, manage the
 menu and portion limits, set blackout dates, switch ordering mode, place orders
 on someone's behalf (which ignores the cutoff and the balance, but still records
 the debit and still respects portion limits), cancel and refund, and read the
@@ -341,3 +386,13 @@ It expects an empty database, since it drives first-run setup itself.
 - All SQL goes through prepared statements.
 - Set `'https' => true` in `config.php` once you are behind TLS; that marks the
   session cookie secure.
+- Sign-in links are stored as a SHA-256 of the token, never the token. A leaked
+  copy of that table cannot be pasted into a URL. They are single use and
+  short-lived, and signing out kills any still outstanding.
+- Identity tokens are verified against the provider's published keys: RSA
+  signatures only — an unsigned token, or one switched to HMAC over the
+  provider's public key, is refused on the algorithm before the signature is
+  looked at — plus issuer, audience, nonce and expiry. The authorisation code
+  flow uses state, nonce and PKCE, all one-shot.
+- An external sign-in never sets a role or an approval, and an address the
+  provider has not confirmed matches no existing account.

@@ -8,6 +8,54 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.10.0 — 2026-08-13
+
+### Added
+
+- **How people sign in is now a choice**, and more than one way can run at
+  once — the same arrangement as the payment methods. Organisers manage it
+  under **Signing in**.
+- **Email a sign-in link.** No password: they type their address and get a link
+  that works once and expires. Suits a congregation that orders lunch weekly and
+  forgets its password in between.
+- **Auth0**, configured with a domain, client ID and client secret. Endpoints
+  and signing keys come from the tenant's discovery document, so a rotated key
+  needs nothing changed here.
+- **Supabase**, configured with a project URL and anon key, brokering whichever
+  social provider the project has enabled.
+- **Linked accounts** on the same screen, with an unlink button, so a wrong link
+  can be undone without deleting anybody.
+
+### Notes
+
+- **Signing in still is not permission to order.** However somebody arrives,
+  a first-time signer lands unapproved and an organiser has to let them in.
+  Nothing a provider says sets a role or an approval.
+- **Accounts are matched on the provider's subject, not the email address.** The
+  address decides which account somebody joins the first time, and only if the
+  provider has confirmed it; after that the link holds. Matching on the address
+  every time would hand a wallet to whoever inherits an address.
+- **You cannot lock yourself out.** If every method is off or misconfigured the
+  password comes back on by itself, and organisers keep a password route at
+  `/login?rescue=1` unless that is deliberately turned off.
+- Sign-in links are stored as a SHA-256 of the token, never the token itself.
+  Single use, short-lived, throttled per account, and revoked on sign-out.
+- Identity tokens are verified against the provider's published keys — RSA only,
+  so an unsigned token or one switched to HMAC over the public key is refused on
+  the algorithm — plus issuer, audience, nonce and expiry. The code flow uses
+  state, nonce and PKCE.
+- Adding a fifth method is a class and one `SignIn::register()` call. Anything
+  speaking OpenID Connect is a subclass of `OidcMethod` of about forty lines.
+
+### Not verified
+
+**No real identity provider has ever been contacted.** Token verification is
+tested properly, because that can be done offline against a generated key.
+Everything either side of it — the redirect Auth0 actually sends, the shape of a
+Supabase token response, whether a callback URL was allowed — follows the
+specifications and nothing more. Expect the first live attempt to fail on
+something small, most likely the callback URL.
+
 ## 0.9.1 — 2026-08-13
 
 ### Added

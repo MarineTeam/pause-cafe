@@ -28,8 +28,9 @@ it, and brings its own accounts, wallet and checkout.
 | Per-location cutoffs | — | — | Yes | — |
 | Bulk entry | Month grid | Single row | Month grid | Month grid |
 | Accounts, wallet, checkout | WooCommerce | WooCommerce | WooCommerce | Built in |
+| How people sign in | WordPress | WordPress | WordPress | Password, emailed link, Auth0, Supabase |
 | Needs WordPress | Yes | Yes | Yes | **No** |
-| Lines | ~3,000 | ~2,900 | ~4,700 | ~10,000 |
+| Lines | ~3,000 | ~2,900 | ~4,700 | ~12,000 |
 
 **At 20–30 orders a week, start with the simplest one that covers what you
 need.** The app is the better-tested code and the cleaner system, but adopting
@@ -84,10 +85,17 @@ covered. The plugins' admin screens and WooCommerce filter integration are
 git archive --format=zip --prefix=pause-cafe-flex-menu/ -o pause-cafe-flex-menu.zip HEAD:pause-cafe-flex-menu
 ```
 
-## Open question
+## Open questions
 
 **How Zeffy credits the wallet.** Their public API is read-only and cannot take
 a payment for us; the app relies on their completed-payment webhook, matched by
 email. The payload shape is the one assumption in the money path that has not
 been verified against a live account — the app logs every raw payload to
 `data/zeffy.log` so it can be tightened after the first real payment.
+
+**Whether the identity providers work.** The app can sign people in through
+Auth0 or Supabase, and the token verification is properly tested — that part can
+be exercised offline against a generated key. What has never happened is a round
+trip to a real tenant. Try it on staging before switching members over, and keep
+the organiser password route on while you do; the most likely first failure is a
+callback URL that was not added at the provider.

@@ -147,6 +147,38 @@ label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 5px; }
 
 .help { font-size: 13px; color: var(--ink-soft); margin: 4px 0 0; }
 
+/* Sign-in --------------------------------------------------------------- */
+
+/* Separates one way of signing in from the next, with a rule either side. */
+.signin-or {
+	max-width: 420px;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 24px 0;
+	font-size: 13px;
+	text-transform: lowercase;
+}
+
+.signin-or::before,
+.signin-or::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: var(--line);
+}
+
+/* Buttons stack rather than sit in a row: a provider name can be long, and
+   two of them side by side wrap into something that reads as one control. */
+.signin-buttons {
+	max-width: 420px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.signin-buttons button { width: 100%; }
+
 /* Menu ------------------------------------------------------------------ */
 
 .menu-head { text-align: center; margin-bottom: 40px; }
