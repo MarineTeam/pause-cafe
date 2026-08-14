@@ -373,6 +373,78 @@ class Notifications {
 	}
 
 	/**
+	 * Tells somebody their order was changed, and what happened to the money.
+	 *
+	 * Deliberately concrete about the amount and where it went. "Your order has
+	 * been updated" invites a reply asking what that means; a figure and a
+	 * destination does not.
+	 */
+	public static function orderChanged( int $orderId, int $wasCents ): Result {
+		$order = Orders::find( $orderId );
+
+		if ( ! $order ) {
+			return Result::failed( 'none', 'No such order.' );
+		}
+
+		$user = Users::find( (int) $order['user_id'] );
+
+		if ( ! $user ) {
+			return Result::failed( 'none', 'No such account.' );
+		}
+
+		$now        = (int) $order['total_cents'];
+		$difference = $now - $wasCents;
+		$byWallet   = 'wallet' === (string) $order['payment_method'];
+
+		$body = array(
+			'Hello ' . $user['name'] . ',',
+			'',
+			'An organiser has changed your order for '
+				. Schedule::formatDate( (string) $order['service_date'], 'l j F' ) . '.',
+			'',
+			'It is now:',
+		);
+
+		foreach ( Orders::lines( $orderId ) as $line ) {
+			$body[] = '  ' . $line['qty'] . ' × ' . $line['item_name']
+				. ( '' !== $line['person_name'] ? ' for ' . $line['person_name'] : '' )
+				. '  ' . Money::format( (int) $line['unit_price_cents'] * (int) $line['qty'] );
+		}
+
+		$body[] = '';
+		$body[] = 'Total: ' . Money::format( $now ) . ' (was ' . Money::format( $wasCents ) . ')';
+		$body[] = '';
+
+		if ( $difference < 0 ) {
+			$body[] = $byWallet
+				? Money::format( -$difference ) . ' has gone back into your wallet.'
+				: Money::format( -$difference ) . ' less to pay on the day.';
+		} elseif ( $difference > 0 ) {
+			$body[] = $byWallet
+				? Money::format( $difference ) . ' has come out of your wallet.'
+				: Money::format( $difference ) . ' more to pay on the day.';
+		}
+
+		if ( $byWallet ) {
+			$body[] = 'Your balance is now ' . Money::format( Wallet::balance( (int) $user['id'] ) ) . '.';
+		}
+
+		$body[] = '';
+		$body[] = 'If this is not what you expected, reply to this email and an organiser will sort it out.';
+		$body[] = '';
+		$body[] = self::siteName();
+
+		return Mailer::send(
+			Message::make(
+				(string) $user['email'],
+				(string) $user['name'],
+				'Your ' . self::siteName() . ' order has changed',
+				implode( "\n", $body )
+			)
+		);
+	}
+
+	/**
 	 * Tells the organisers somebody is waiting to be let in.
 	 *
 	 * @return Result[] One per organiser.

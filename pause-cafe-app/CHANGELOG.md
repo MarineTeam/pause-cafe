@@ -10,6 +10,37 @@ Notable changes to the standalone app. Dates are the day the change landed on
 
 ## 0.13.0 — 2026-08-14
 
+### Added
+
+- **Orders can be edited instead of only cancelled**, the way WooCommerce lets
+  you. From **Orders → Edit**: change a quantity up or down, remove a line, add
+  another dish, correct a name or note, or refund an amount with a reason. The
+  difference moves either way — wallet orders are credited or debited, cash
+  orders simply owe more or less.
+- **A per-order history of the money**, saying what changed, why, who did it and
+  how much, alongside the running totals: what the food is worth, what has been
+  taken, what has been given back, and what could still be refunded.
+- Members are emailed when an edit changes what they owe, with the new lines,
+  the old and new totals, and where the money went. Correcting a spelling sends
+  nothing.
+
+### Notes
+
+- **`orders.total_cents` and `orders.charged_cents` mean different things.** The
+  first is what the food is worth and moves as the lines are edited; the second
+  is money in, only ever grows, and is what refunds are capped against. Without
+  the second, an order edited down to nothing could be refunded repeatedly for
+  money that was never collected.
+- Repeated movements need repeated wallet references, and `charge()`/`refund()`
+  have fixed ones — `order:12`, `refund:12` — behind a unique index that stops a
+  redelivered Zeffy webhook crediting twice. Rather than loosen that, there is a
+  new `Payments\Method::adjust()` whose reference carries the adjustment's own
+  row id. **Anything implementing `Method` needs the new method.**
+- Raising a quantity respects portion limits exactly as ordering does. Reducing
+  one releases the portions, since capacity is counted live from the lines.
+- Cash orders record the adjustment but write no ledger entry, consistent with
+  how cancelling has always treated them: the system never held that money.
+- A cancelled order is closed to further edits.
 ### Fixed
 
 - **Orders could become unreachable when their dish was taken off the menu.**

@@ -137,6 +137,9 @@ foreach ( $orders as $orderRow ) {
 							</td>
 							<td class="num"><?= e( Money::format( (int) $order['total_cents'] ) ) ?></td>
 							<td class="no-print">
+								<?php // A plain link, so it works from inside the bulk form. ?>
+								<a href="/admin/orders/<?= (int) $order['id'] ?>/edit">Edit</a><br>
+
 								<?php if ( ! $isCancelled ) : ?>
 									<?php
 									/*

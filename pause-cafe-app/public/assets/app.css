@@ -425,6 +425,13 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 .pill--past, .pill--none { background: var(--neutral-bg); color: var(--neutral-ink); }
 .pill--blackout { background: var(--bad-bg); color: var(--bad-ink); }
 
+/* One line of an order on the edit screen, separated so the controls for each
+   are visibly a set rather than a wall of inputs. */
+.order-line { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; }
+.order-line:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+.order-line h4 { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
+.order-line h4 .muted { font-weight: 400; font-size: 14px; }
+
 .muted { color: var(--ink-soft); }
 .right { text-align: right; }
 .stack > * + * { margin-top: 10px; }
