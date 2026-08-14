@@ -44,6 +44,18 @@ $shown = 0;
 		<button type="submit">Sign in</button>
 	</form>
 
+<?php elseif ( ! $methods ) : ?>
+
+	<?php // Every method off or unconfigured. Members wait; organisers have the rescue. ?>
+	<div class="flash flash--notice">
+		Signing in is not set up at the moment. An organiser is working on it —
+		please try again shortly.
+	</div>
+
+	<?php if ( SignIn::rescueOffered() ) : ?>
+		<p class="help muted"><a href="/login?rescue=1">Organiser sign-in</a></p>
+	<?php endif; ?>
+
 <?php else : ?>
 
 	<?php foreach ( $passwords as $method ) : ?>

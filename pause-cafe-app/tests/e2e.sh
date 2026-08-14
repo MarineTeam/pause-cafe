@@ -562,22 +562,37 @@ curl -s -o /dev/null -b $N -c $N -X POST "$BASE/login/rescue" \
   -d "_token=$T" -d "email=sam@example.org" -d "password=battery-staple"
 want "a member cannot use it" "$(code $N /account)" "302"
 
-# Every method off at once. The fallback has to put a password form back AND
-# have it work -- it used to render one that 500'd, which is the worst possible
-# time for that, because it is the state somebody is in when they are locked out.
+# Every method off at once. Members get nothing -- no password box smuggled
+# back in -- while organisers keep the rescue. Both halves matter: an earlier
+# version put a password form back for everybody, which re-admitted the whole
+# congregation to a site whose organisers had switched passwords off.
 T=$(tok $A /admin/signin)
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/signin" \
   -d "_token=$T" -d "signin_admin_rescue=1"
 
 LOGIN=$(curl -s "$BASE/login")
-has "with nothing switched on, a password form comes back" "$LOGIN" 'name="method" value="password"'
+hasnt "with nothing switched on, no password form is offered" "$LOGIN" 'name="method" value="password"'
+has "members are told to wait" "$LOGIN" "not set up at the moment"
+has "and the organiser route is still there" "$LOGIN" "rescue=1"
 
+# A member must not get in, by either door.
 F=$(mktemp)
 T=$(tok $F /login)
-want "and signing in with it works rather than erroring" \
-  "$(curl -s -o /dev/null -w '%{http_code}' -b $F -c $F -X POST "$BASE/login" \
-    -d "_token=$T" -d "method=password" -d "email=ada@example.org" -d "password=correct-horse")" "302"
-want "landing the organiser in the admin area" "$(code $F /admin)" "200"
+curl -s -o /dev/null -b $F -c $F -X POST "$BASE/login" \
+  -d "_token=$T" -d "method=password" -d "email=sam@example.org" -d "password=battery-staple"
+want "a member cannot sign in with a password" "$(code $F /account)" "302"
+
+T=$(tok $F "/login?rescue=1")
+curl -s -o /dev/null -b $F -c $F -X POST "$BASE/login/rescue" \
+  -d "_token=$T" -d "email=sam@example.org" -d "password=battery-staple"
+want "nor through the organiser door" "$(code $F /account)" "302"
+
+G=$(mktemp)
+T=$(tok $G "/login?rescue=1")
+want "but an organiser can" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -b $G -c $G -X POST "$BASE/login/rescue" \
+    -d "_token=$T" -d "email=ada@example.org" -d "password=correct-horse")" "302"
+want "and reaches the admin area" "$(code $G /admin)" "200"
 
 # The lockout this all exists to prevent: passwords off, a provider that is
 # filled in but has never signed anybody in, and the rescue switched off too.

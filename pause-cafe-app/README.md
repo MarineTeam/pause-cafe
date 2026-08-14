@@ -108,19 +108,24 @@ After that the link holds even if they change their address at the provider. The
 alternative, matching on the address every time, would mean whoever inherits an
 address at work inherits the wallet that went with it.
 
-**You cannot lock yourself out.** Three things see to it:
+**Organisers cannot lock themselves out.** Note the word: *organisers*. If you
+switch every method off, members cannot sign in, and that is correct — you
+turned it off. They see a note asking them to wait. What is protected is your
+own way back:
 
-1. If every method is off or misconfigured, the password comes back on by
-   itself.
-2. **Organisers keep a password route at `/login?rescue=1`**, and it cannot be
-   switched off until an organiser has actually signed in through a provider.
-   A provider whose settings are filled in has proved nothing — a client secret
-   with a typo in it looks exactly like a working one right up until somebody
-   tries it. So the old door stays until somebody has walked through the new
-   one. The checkbox is held on and says why.
-3. If it all goes wrong anyway — the tenant is deleted, the account that proved
-   it works has left — there is a command-line way back that depends on nothing
-   outside the server:
+1. **Organisers keep a password route at `/login?rescue=1`**, checked against an
+   organiser account, so a member cannot use it. It is forced on whenever
+   nothing else is available at all.
+
+2. **It cannot be switched off until an organiser has actually signed in
+   through a provider.** A provider whose settings are filled in has proved
+   nothing — a client secret with a typo in it looks exactly like a working one
+   right up until somebody tries it. So the old door stays until somebody has
+   walked through the new one. The checkbox is held on and says why.
+
+3. **If it all goes wrong anyway** — the tenant is deleted, the organiser who
+   proved it works has left — there is a command-line way back that depends on
+   nothing outside the server:
 
 ```bash
 php tools/rescue.php

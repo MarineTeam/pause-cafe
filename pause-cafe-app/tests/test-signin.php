@@ -514,25 +514,34 @@ Settings::setMany(
 	)
 );
 
-check( 'with everything off, passwords come back', array_keys( SignIn::available() ), array( 'password' ) );
-
 /*
- * And they have to actually work. The fallback used to be offered by the login
- * page and then refused by resolve(), which checked the enabled setting rather
- * than availability -- a safety net that drew a door which would not open. It
- * only showed up when every method was off at once, which is exactly the state
- * somebody is in when they need it.
+ * With everything off the public login page offers nothing at all. There is no
+ * fallback that puts passwords back for members: two earlier versions had one,
+ * and it was wrong both times -- first it drew a form that then refused to
+ * work, and once that was fixed it quietly re-admitted every member to a site
+ * whose organisers had deliberately switched passwords off.
+ *
+ * What survives is the organiser rescue, which is checked against an admin
+ * account, and which cannot be off while it is the only way in.
  */
-$fallback = SignIn::resolve( 'password' );
+check( 'with everything off, members are offered nothing', SignIn::available(), array() );
 
-check( 'and can be resolved, not just displayed', $fallback->id(), 'password' );
-check(
-	'and will really sign an organiser in',
-	$fallback->start(
-		array( 'email' => 'ruth@example.org', 'password' => 'a-good-password' )
-	)->isAuthenticated(),
-	true
+check_throws(
+	'and a member cannot sign in with a password anyway',
+	static fn() => SignIn::resolve( 'password' ),
+	'switched off'
 );
+
+check( 'while the organiser rescue is forced on', SignIn::rescueAllowed(), true );
+check( 'and offered', SignIn::rescueOffered(), true );
+check( 'as the only way in', SignIn::organiserRoutes(), array( 'Organiser password' ) );
+
+// Even having been told to switch it off, since there is nothing to replace it.
+Settings::set( 'signin_admin_rescue', 'no' );
+
+check( 'which cannot be given away when it is all there is', SignIn::rescueAllowed(), true );
+
+Settings::set( 'signin_admin_rescue', 'yes' );
 
 Settings::set( 'signin_auth0_enabled', 'yes' );
 
