@@ -8,6 +8,46 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.11.1 — 2026-08-14
+
+### Fixed
+
+- **A note typed against a meal on the cart page was silently thrown away.**
+  The cart was a form per line, each with its own Update button, and the
+  checkout button lived in a form of its own — so "no onions" only survived if
+  the shopper happened to press that line's Update before checking out, which
+  nobody does. The note reached nothing: not the kitchen list, not the CSV, not
+  the confirmation email.
+
+  It looked intermittent because there were two ways in. A note typed on the
+  **menu card** travelled with the add-to-cart request and always worked; the
+  same note typed on the **cart page** was lost. Same field, same wording, and
+  whether it survived depended on which screen it was typed on.
+
+  The cart is now one form. Update, Remove and Place order all carry every
+  line's answers, so nothing depends on pressing a particular button first.
+
+### Changed
+
+- **The two kinds of note are now labelled.** The kitchen list tags each one
+  "This meal" or "Whole order" rather than distinguishing them by being slightly
+  greyer, which is no distinction at all on a printout. The tag keeps an outline
+  when printed, since the colour will not survive a monochrome printer.
+- **The CSV gives them a column each** — "Meal note" and "Order note" — instead
+  of joining them with a slash into one cell that could be neither sorted nor
+  filtered.
+- The order-note box on the cart says what it is for, and points at the per-dish
+  box for anything about a single meal.
+
+### Notes
+
+- `views/partials/order-fields.php` takes an optional `group`, so one form can
+  carry several sets of answers as `line[0][note]`, `line[1][note]` and so on.
+  That is what lets the whole cart submit at once.
+- Quantity of zero no longer empties a line. Removing is the Remove button's
+  job; a zero in the quantity box is a typo, and clearing somebody's order
+  because they mistyped is a poor trade.
+
 ## 0.11.0 — 2026-08-14
 
 ### Added

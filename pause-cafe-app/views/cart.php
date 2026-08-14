@@ -26,6 +26,25 @@ $problems = $cart['problems'];
 		<p class="muted">For <?= e( Schedule::formatDate( $cart['serviceDate'], 'l j F' ) ) ?>.</p>
 	<?php endif; ?>
 
+	<?php
+	/*
+	 * One form for the whole cart, including the Place order button.
+	 *
+	 * It used to be a form per line, each with its own Update button, and the
+	 * checkout button lived in a form of its own. Anything typed into a line --
+	 * "no onions" against a meal -- was then thrown away unless the shopper
+	 * happened to press that line's Update before checking out, which is not a
+	 * thing anybody does. The note simply vanished, and only sometimes, which
+	 * made it look like a display bug in the kitchen list rather than data that
+	 * was never saved.
+	 *
+	 * With one form, every button carries every answer. Update and Remove
+	 * redirect elsewhere with formaction; Place order is the form's own action.
+	 */
+	?>
+	<form method="post" action="/checkout">
+		<?= Csrf::field() ?>
+
 	<div class="table-scroll">
 		<table>
 			<thead>
@@ -46,13 +65,11 @@ $problems = $cart['problems'];
 							<span class="muted"><?= e( $line['item']['location_name'] ) ?></span>
 						</td>
 						<td colspan="3">
-							<form method="post" action="/cart/update" class="field-row">
-								<?= Csrf::field() ?>
-								<input type="hidden" name="index" value="<?= (int) $line['index'] ?>">
-
+							<div class="field-row">
 								<?php
 								// Same questions the dish asked, so an answer given at the
-								// menu can be corrected here.
+								// menu can be corrected here. Nested under this line's
+								// index so every line travels in the one submission.
 								$of = array(
 									'fields' => \PauseCafe\MenuFields::visibleFor( $line['item'] ),
 									'values' => array_merge(
@@ -64,6 +81,7 @@ $problems = $cart['problems'];
 										$line['extra']
 									),
 									'prefix' => 'cart' . (int) $line['index'],
+									'group'  => 'line[' . (int) $line['index'] . ']',
 								);
 
 								include \PauseCafe\View::locate( 'partials/order-fields' );
@@ -71,28 +89,28 @@ $problems = $cart['problems'];
 
 								<div class="field">
 									<label for="cart-qty-<?= (int) $line['index'] ?>">Qty</label>
-									<input type="number" id="cart-qty-<?= (int) $line['index'] ?>" name="qty"
+									<input type="number" id="cart-qty-<?= (int) $line['index'] ?>"
+										name="line[<?= (int) $line['index'] ?>][qty]"
 										value="<?= (int) $line['qty'] ?>" min="1" style="max-width:90px">
 								</div>
-
-								<div style="align-self:end">
-									<button type="submit" class="button--quiet">Update</button>
-								</div>
-							</form>
+							</div>
 						</td>
 						<td class="num"><?= e( Money::format( $line['subtotal'] ) ) ?></td>
 						<td class="num">
-							<form method="post" action="/cart/remove">
-								<?= Csrf::field() ?>
-								<input type="hidden" name="index" value="<?= (int) $line['index'] ?>">
-								<button type="submit" class="link-button">Remove</button>
-							</form>
+							<?php // Carries the whole form, so nothing typed is lost on the way out. ?>
+							<button type="submit" class="link-button" formaction="/cart/remove"
+								name="index" value="<?= (int) $line['index'] ?>">Remove</button>
 						</td>
 					</tr>
 				<?php endforeach; ?>
 			</tbody>
 		</table>
 	</div>
+
+	<p class="no-print">
+		<button type="submit" class="button button--quiet" formaction="/cart/update">Update cart</button>
+		<span class="help">Changing a quantity above and pressing this reworks the total.</span>
+	</p>
 
 	<?php
 	// Each method decides for itself whether it can cover this order, so the
@@ -130,13 +148,14 @@ $problems = $cart['problems'];
 			<?php endif; ?>
 		</table>
 
-		<form method="post" action="/checkout">
-			<?= Csrf::field() ?>
-
 			<div class="field">
-				<label for="order_note">Order notes <span class="muted">(optional)</span></label>
+				<label for="order_note">A note about the whole order <span class="muted">(optional)</span></label>
 				<textarea id="order_note" name="order_note" rows="2" maxlength="500"
-					placeholder="Anything the kitchen should know about the whole order"></textarea>
+					placeholder="Anything about collection or the order as a whole"><?= e( $orderNote ?? '' ) ?></textarea>
+				<p class="help">
+					For a note about one meal — “no onions” — use the box beside that
+					dish above instead. The kitchen list shows them separately.
+				</p>
 			</div>
 
 			<?php if ( ! $options ) : ?>
@@ -177,7 +196,8 @@ $problems = $cart['problems'];
 			<button type="submit" <?= ( $problems || '' === $firstFree || ! Auth::canOrder() ) ? 'disabled' : '' ?>>
 				Place order
 			</button>
-		</form>
 	</div>
+
+	</form>
 
 <?php endif; ?>

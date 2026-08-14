@@ -115,7 +115,7 @@ covered over HTTP in `e2e.sh`.
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 201 assertions
+bash tests/e2e.sh                                          # 207 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token
@@ -125,6 +125,14 @@ discarded, a wallet top-up, add-to-cart, checkout debiting the balance, a dish
 selling out at its portion limit, the kitchen report, the CSV export, a cash
 order placed and later marked paid by an organiser, and a member getting 403
 from the admin area.
+
+The cart is checked out as one form: the line fields arrive as `line[0][…]`,
+the checkout POST carries a note that was never separately saved, and the
+kitchen list and CSV both show it. That combination was a silent data loss
+before 0.11.1 — the old per-line Update form meant anything typed and not
+separately submitted was thrown away — and the assertion exists because the
+previous test happened to set the note at add-to-cart time, which was the one
+path that always worked.
 
 It also drives the sign-in methods over real HTTP: the login page rendering
 whatever is switched on, an emailed link arriving in `data/mail.log` and signing

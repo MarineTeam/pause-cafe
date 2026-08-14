@@ -315,12 +315,18 @@ they ordered, so treat the password the way you would a door key.
 
 ## Notes on orders
 
-Two kinds, both shown in the kitchen table and the CSV:
+Two kinds, both shown in the kitchen table and the CSV, and labelled there so a
+cook can tell them apart:
 
-- **Per meal** — "no onions", entered beside the name and group, so it travels
-  with the one dish it belongs to
+- **Per meal** — "no onions", entered beside the name and group, travelling with
+  the one dish it belongs to. Tagged **This meal**, and its own CSV column.
 - **Per order** — a free-text box at checkout, the same idea as WooCommerce's
-  order notes
+  order notes. Tagged **Whole order**, and its own CSV column.
+
+Either can be typed on the menu card or changed on the cart page. The cart is a
+single form, so every button on it — Update, Remove, Place order — carries
+everything that has been typed. Nothing depends on pressing a particular button
+first, which is what went wrong before 0.11.1.
 
 ## Email
 

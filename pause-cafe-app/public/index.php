@@ -467,6 +467,44 @@ $router->post(
 	}
 );
 
+/**
+ * Saves whatever the cart form was carrying.
+ *
+ * The cart is one form, so every button on it -- Update, Remove, Place order --
+ * arrives with all of the answers for every line. This applies them, and both
+ * the update route and checkout call it first. That is the whole fix for notes
+ * being silently dropped: previously only the line's own Update button carried
+ * them, and nobody presses that before checking out.
+ */
+$applyCartLines = static function (): void {
+	$posted = $_POST['line'] ?? null;
+
+	if ( ! is_array( $posted ) ) {
+		return;
+	}
+
+	foreach ( Cart::lines() as $index => $line ) {
+		$answers = $posted[ $index ] ?? null;
+
+		if ( ! is_array( $answers ) ) {
+			continue;
+		}
+
+		$item = Menu::item( (int) $line['item_id'] );
+
+		if ( ! $item ) {
+			continue;
+		}
+
+		// Removing is the Remove button's job; a quantity of zero here is a
+		// typo, not an instruction, and clearing somebody's line because they
+		// mistyped would be a poor trade.
+		$qty = isset( $answers['qty'] ) ? max( 1, (int) $answers['qty'] ) : (int) $line['qty'];
+
+		Cart::update( $index, $qty, MenuFields::collect( $item, $answers, Auth::user() ) );
+	}
+};
+
 $router->get(
 	'/cart',
 	static function () use ( $requireLogin ): void {
@@ -488,28 +526,11 @@ $router->get(
 
 $router->post(
 	'/cart/update',
-	static function () use ( $requireLogin, $post ): void {
+	static function () use ( $requireLogin, $applyCartLines ): void {
 		$requireLogin();
 		Csrf::verify();
 
-		$index = (int) ( $_POST['index'] ?? -1 );
-		$lines = Cart::lines();
-		$qty   = (int) ( $_POST['qty'] ?? 1 );
-
-		if ( ! isset( $lines[ $index ] ) ) {
-			View::redirect( '/cart' );
-		}
-
-		if ( $qty < 1 ) {
-			Cart::remove( $index );
-			View::redirect( '/cart' );
-		}
-
-		$item = Menu::item( (int) $lines[ $index ]['item_id'] );
-
-		if ( $item ) {
-			Cart::update( $index, $qty, MenuFields::collect( $item, $_POST, Auth::user() ) );
-		}
+		$applyCartLines();
 
 		View::redirect( '/cart' );
 	}
@@ -529,7 +550,7 @@ $router->post(
 
 $router->post(
 	'/checkout',
-	static function () use ( $requireLogin, $post ): void {
+	static function () use ( $requireLogin, $post, $applyCartLines ): void {
 		$requireLogin();
 		Csrf::verify();
 
@@ -537,6 +558,10 @@ $router->post(
 			View::flash( 'error', 'Your account is waiting to be approved, so it cannot order yet.' );
 			View::redirect( '/cart' );
 		}
+
+		// Before anything else: a note typed beside a dish and never separately
+		// saved is still on this request, and this is its last chance.
+		$applyCartLines();
 
 		$cart = Cart::detailed();
 
@@ -767,7 +792,13 @@ $router->get(
 			fputcsv( $out, $fields, ',', '"', '' );
 		};
 
-		$row( array( 'Date', 'Location', 'Dish', 'Qty', 'Name', 'Group', 'Payment', 'Paid', 'Notes', 'Extras', 'Account', 'Order' ) );
+		/*
+		 * The two notes get a column each. They used to share one, joined with
+		 * a slash, which left whoever opened the spreadsheet unable to tell a
+		 * note about one meal from a note about the whole order -- and unable
+		 * to sort or filter on either.
+		 */
+		$row( array( 'Date', 'Location', 'Dish', 'Qty', 'Name', 'Group', 'Payment', 'Paid', 'Meal note', 'Order note', 'Extras', 'Account', 'Order' ) );
 
 		foreach ( $rows as $line ) {
 			$row(
@@ -780,7 +811,8 @@ $router->get(
 					$line['group_name'],
 					Payments::label( (string) $line['payment_method'] ),
 					'' !== $line['paid_at'] ? 'yes' : 'no',
-					trim( $line['note'] . ( '' !== $line['order_note'] ? ' / ' . $line['order_note'] : '' ) ),
+					$line['note'],
+					$line['order_note'],
 					// Answers to fields the organiser added, as one readable cell
 					// rather than a column per field that changes shape over time.
 					MenuFields::describeExtras( $line['extra_fields'] ?? '' ),

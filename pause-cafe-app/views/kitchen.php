@@ -166,18 +166,33 @@ $heading = static function ( string $key, string $label ) use ( $sort, $dir, $qu
 							<?php endif; ?>
 						</td>
 						<td>
-							<?php $extras = \PauseCafe\MenuFields::describeExtras( $line['extra_fields'] ?? '' ); ?>
+							<?php
+							$extras = \PauseCafe\MenuFields::describeExtras( $line['extra_fields'] ?? '' );
 
-							<?= e( $line['note'] ) ?>
+							/*
+							 * Two kinds of note, and a cook needs to tell them apart:
+							 * one is about this meal, the other about the order it
+							 * came in. They used to differ only by being slightly
+							 * greyer, which is not a distinction anybody reads off a
+							 * printout in a kitchen.
+							 */
+							?>
+							<?php if ( '' !== $line['note'] ) : ?>
+								<p class="note note--meal">
+									<span class="note__tag">This meal</span>
+									<?= e( $line['note'] ) ?>
+								</p>
+							<?php endif; ?>
 
 							<?php if ( '' !== $extras ) : ?>
-								<?php if ( '' !== $line['note'] ) : ?><br><?php endif; ?>
-								<?= e( $extras ) ?>
+								<p class="note"><?= e( $extras ) ?></p>
 							<?php endif; ?>
 
 							<?php if ( '' !== $line['order_note'] ) : ?>
-								<?php if ( '' !== $line['note'] || '' !== $extras ) : ?><br><?php endif; ?>
-								<span class="muted" style="font-size:13px"><?= e( $line['order_note'] ) ?></span>
+								<p class="note note--order">
+									<span class="note__tag">Whole order</span>
+									<?= e( $line['order_note'] ) ?>
+								</p>
 							<?php endif; ?>
 						</td>
 					</tr>
