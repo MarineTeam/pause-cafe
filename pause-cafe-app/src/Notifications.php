@@ -20,7 +20,7 @@ class Notifications {
 		return Mailer::fromName();
 	}
 
-	private static function baseUrl(): string {
+	public static function baseUrl(): string {
 		$scheme = ! empty( $_SERVER['HTTPS'] ) && 'off' !== $_SERVER['HTTPS'] ? 'https' : 'http';
 		$host   = (string) ( $_SERVER['HTTP_HOST'] ?? '' );
 
@@ -285,6 +285,38 @@ class Notifications {
 				(string) $user['email'],
 				(string) $user['name'],
 				'Your ' . self::siteName() . ' account is ready',
+				implode( "\n", $body )
+			)
+		);
+	}
+
+	/**
+	 * The sign-in link itself.
+	 *
+	 * Sent as plain text with the URL on its own line. No button, no tracking
+	 * wrapper: a link that signs somebody in should be one they can read before
+	 * they click it.
+	 */
+	public static function signInLink( array $user, string $link, int $minutes ): Result {
+		$body = array(
+			'Hello ' . $user['name'] . ',',
+			'',
+			'Here is your link to sign in to ' . self::siteName() . ':',
+			'',
+			$link,
+			'',
+			'It works once, and stops working in ' . $minutes . ' minutes.',
+			'',
+			'If you did not ask for it, you can ignore this — nobody can get in without the link.',
+			'',
+			self::siteName(),
+		);
+
+		return Mailer::send(
+			Message::make(
+				(string) $user['email'],
+				(string) $user['name'],
+				'Your sign-in link for ' . self::siteName(),
 				implode( "\n", $body )
 			)
 		);

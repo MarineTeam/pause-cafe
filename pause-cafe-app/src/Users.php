@@ -80,10 +80,64 @@ class Users {
 	}
 
 	/**
+	 * Makes an account for somebody an identity provider vouched for.
+	 *
+	 * No password is set, and none is needed: they have proved who they are
+	 * somewhere else. The empty hash is what marks the account as passwordless,
+	 * and authenticate() refuses to match against it.
+	 *
+	 * Unapproved, like every other new account. Signing in and being allowed to
+	 * order are separate questions, and only an organiser answers the second.
+	 *
+	 * @return int New user ID.
+	 * @throws \RuntimeException When the email is already taken.
+	 */
+	public static function createExternal( string $email, string $name ): int {
+		$email = self::normaliseEmail( $email );
+
+		if ( self::findByEmail( $email ) ) {
+			throw new \RuntimeException( 'An account with that email already exists.' );
+		}
+
+		$statement = Database::pdo()->prepare(
+			'INSERT INTO users (email, password_hash, name, group_name, role, is_approved, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)'
+		);
+
+		$statement->execute(
+			array(
+				$email,
+				'',
+				'' !== $name ? $name : $email,
+				'',
+				self::ROLE_MEMBER,
+				0,
+				gmdate( 'Y-m-d H:i:s' ),
+			)
+		);
+
+		return (int) Database::pdo()->lastInsertId();
+	}
+
+	/** Whether this account can be signed into with a password at all. */
+	public static function hasPassword( ?array $user ): bool {
+		return $user && '' !== (string) ( $user['password_hash'] ?? '' );
+	}
+
+	/**
 	 * @return array|null The user row on success.
 	 */
 	public static function authenticate( string $email, string $password ): ?array {
 		$user = self::findByEmail( $email );
+
+		/*
+		 * A passwordless account must never be matched. password_verify()
+		 * against an empty hash is false anyway, but relying on that would put
+		 * the whole guarantee in someone else's function.
+		 */
+		if ( $user && ! self::hasPassword( $user ) ) {
+			return null;
+		}
 
 		if ( ! $user ) {
 			/*
@@ -177,7 +231,15 @@ class Users {
 	}
 
 	public static function delete( int $id ): void {
-		$statement = Database::pdo()->prepare( 'DELETE FROM users WHERE id = ?' );
+		$pdo = Database::pdo();
+
+		// Nothing that could sign the account back in may outlive it.
+		foreach ( array( 'user_identities', 'login_tokens' ) as $table ) {
+			$statement = $pdo->prepare( 'DELETE FROM ' . $table . ' WHERE user_id = ?' );
+			$statement->execute( array( $id ) );
+		}
+
+		$statement = $pdo->prepare( 'DELETE FROM users WHERE id = ?' );
 		$statement->execute( array( $id ) );
 	}
 }

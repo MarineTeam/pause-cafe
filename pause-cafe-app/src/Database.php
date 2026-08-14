@@ -267,6 +267,54 @@ class Database {
 		);
 
 		/*
+		 * Which external accounts belong to which local one.
+		 *
+		 * The link is on the provider's subject claim, never on the email
+		 * address. Subjects are permanent; an address can be changed at the
+		 * provider, and keying on it would mean whoever holds an address today
+		 * inherits the wallet of whoever held it yesterday.
+		 */
+		$pdo->exec(
+			"CREATE TABLE IF NOT EXISTS user_identities (
+				id           INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id      INTEGER NOT NULL,
+				provider     TEXT    NOT NULL,
+				subject      TEXT    NOT NULL,
+				email        TEXT    NOT NULL DEFAULT '',
+				created_at   TEXT    NOT NULL,
+				last_seen_at TEXT    NOT NULL DEFAULT ''
+			)"
+		);
+
+		$pdo->exec(
+			'CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_subject
+				ON user_identities (provider, subject)'
+		);
+
+		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_identity_user ON user_identities (user_id)' );
+
+		/*
+		 * Single-use sign-in links.
+		 *
+		 * Only the hash of the token is kept. A leaked backup of this table is
+		 * then worth nothing: the column cannot be pasted into a URL, for the
+		 * same reason password_hash cannot be typed into a password box.
+		 */
+		$pdo->exec(
+			"CREATE TABLE IF NOT EXISTS login_tokens (
+				id         INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id    INTEGER NOT NULL,
+				token_hash TEXT    NOT NULL UNIQUE,
+				purpose    TEXT    NOT NULL DEFAULT 'magic',
+				created_at TEXT    NOT NULL,
+				expires_at TEXT    NOT NULL,
+				used_at    TEXT    NOT NULL DEFAULT ''
+			)"
+		);
+
+		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_token_user ON login_tokens (user_id, created_at)' );
+
+		/*
 		 * Added after the first release, so they arrive by ALTER rather than in
 		 * the CREATE above -- an existing install would never see a changed
 		 * CREATE TABLE IF NOT EXISTS.

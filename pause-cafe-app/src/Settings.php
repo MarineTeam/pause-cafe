@@ -54,6 +54,19 @@ class Settings {
 			// People must be approved by an admin before they can order.
 			'allow_registration'       => 'yes',
 
+			/*
+			 * Signing in. Per-method keys (signin_auth0_*, signin_supabase_*)
+			 * are not listed, for the same reason the mail transports are not:
+			 * each method reads its own.
+			 *
+			 * signin_admin_rescue is the way back in when an identity provider
+			 * has been set up wrongly. With it on, organisers can always use a
+			 * password even when members cannot.
+			 */
+			'signin_password_enabled'  => 'yes',
+			'signin_admin_rescue'      => 'yes',
+			'signin_external_create'   => 'yes',
+
 			// Let members go negative? Off by default -- the wallet is prepaid.
 			'allow_negative_balance'   => 'no',
 		);

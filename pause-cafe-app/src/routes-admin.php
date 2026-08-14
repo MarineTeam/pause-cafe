@@ -12,6 +12,7 @@ use PauseCafe\Auth;
 use PauseCafe\Blackouts;
 use PauseCafe\Csrf;
 use PauseCafe\Groups;
+use PauseCafe\Identities;
 use PauseCafe\Kitchen;
 use PauseCafe\Mailer;
 use PauseCafe\Menu;
@@ -25,6 +26,7 @@ use PauseCafe\Payments;
 use PauseCafe\Schedule;
 use PauseCafe\Schedules;
 use PauseCafe\Settings;
+use PauseCafe\SignIn;
 use PauseCafe\Users;
 use PauseCafe\View;
 use PauseCafe\Wallet;
@@ -1099,6 +1101,97 @@ $router->post(
 
 		View::flash( 'success', 'Email settings saved.' );
 		View::redirect( '/admin/settings' );
+	}
+);
+
+/* -------------------------------------------------------------------------
+ * Signing in
+ * ---------------------------------------------------------------------- */
+
+$router->get(
+	'/admin/signin',
+	static function () use ( $requireAdmin ): void {
+		$requireAdmin();
+
+		echo View::render(
+			'admin/sign-in',
+			array(
+				'title'   => 'Signing in',
+				'methods' => SignIn::all(),
+				'links'   => Identities::all(),
+			)
+		);
+	}
+);
+
+$router->post(
+	'/admin/signin',
+	static function () use ( $requireAdmin ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$wanted = (array) ( $_POST['enabled'] ?? array() );
+
+		foreach ( SignIn::all() as $id => $method ) {
+			Settings::set( SignIn::settingKey( $id ), isset( $wanted[ $id ] ) ? 'yes' : 'no' );
+
+			/*
+			 * Fields come from the method rather than a fixed list, so a new
+			 * one needs no change here -- the same arrangement as the mail
+			 * transports above.
+			 */
+			foreach ( $method->fields() as $key => $field ) {
+				if ( ! array_key_exists( $key, $_POST ) ) {
+					continue;
+				}
+
+				$value = trim( (string) $_POST[ $key ] );
+
+				// A blank secret box means "leave it alone", not "erase it".
+				if ( 'password' === $field['type'] && '' === $value ) {
+					continue;
+				}
+
+				Settings::set( $key, $value );
+			}
+		}
+
+		Settings::setMany(
+			array(
+				'signin_admin_rescue'    => isset( $_POST['signin_admin_rescue'] ) ? 'yes' : 'no',
+				'signin_external_create' => isset( $_POST['signin_external_create'] ) ? 'yes' : 'no',
+			)
+		);
+
+		/*
+		 * Said after saving rather than refusing the save. The organiser is
+		 * signed in as they read it, so they have time to fix it; refusing
+		 * would also mean refusing the half of the form that was fine.
+		 */
+		if ( ! SignIn::organiserRoutes() ) {
+			View::flash(
+				'error',
+				'Nothing usable is switched on, so the password sign-in is being kept available. '
+				. 'Set up a method, or turn the organiser password back on.'
+			);
+			View::redirect( '/admin/signin' );
+		}
+
+		View::flash( 'success', 'Sign-in settings saved.' );
+		View::redirect( '/admin/signin' );
+	}
+);
+
+$router->post(
+	'/admin/signin/unlink',
+	static function () use ( $requireAdmin ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		Identities::unlink( (int) ( $_POST['id'] ?? 0 ) );
+
+		View::flash( 'success', 'That external account has been unlinked.' );
+		View::redirect( '/admin/signin' );
 	}
 );
 

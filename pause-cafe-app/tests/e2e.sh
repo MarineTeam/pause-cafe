@@ -484,6 +484,91 @@ BOGUS=$(curl -s -b $A -c $A "$BASE/admin?date=not-a-date")
 has "a bogus date falls back to the next serving" "$BOGUS" "Cook list for Sunday 16 August"
 
 echo ""
+echo "Ways of signing in"
+LOGIN=$(curl -s "$BASE/login")
+has "the sign-in page offers a password" "$LOGIN" 'name="password"'
+has "naming which method it is" "$LOGIN" 'name="method" value="password"'
+hasnt "and no organiser back door while passwords are on" "$LOGIN" "rescue=1"
+
+want "the organiser screen is there" "$(code $A /admin/signin)" "200"
+SETTINGS=$(curl -s -b $A -c $A "$BASE/admin/signin")
+has "listing every method" "$SETTINGS" "Email a sign-in link"
+has "including the ones not set up" "$SETTINGS" "Supabase"
+has "and the callback URL to copy" "$SETTINGS" "/auth/auth0/callback"
+
+# Turn on the emailed link alongside passwords.
+T=$(tok $A /admin/signin)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/signin" \
+  -d "_token=$T" -d "enabled[password]=1" -d "enabled[magic]=1" \
+  -d "signin_magic_minutes=15" -d "signin_admin_rescue=1" -d "signin_external_create=1"
+
+LOGIN=$(curl -s "$BASE/login")
+has "the link method appears once switched on" "$LOGIN" 'name="method" value="magic"'
+has "alongside the password form" "$LOGIN" 'name="method" value="password"'
+
+echo ""
+echo "Signing in with an emailed link"
+: > data/mail.log
+# A jar of its own: $M is already signed in, and /login redirects away from
+# anyone who is, which would leave nothing to read a CSRF token out of.
+L=$(mktemp)
+T=$(tok $L /login)
+LINKREQ=$(curl -s -b $L -c $L -X POST "$BASE/login" -L \
+  -d "_token=$T" -d "method=magic" -d "email=sam@example.org")
+has "asking for a link says something noncommittal" "$LINKREQ" "on its way"
+
+UNKNOWN=$(curl -s -b $L -c $L -X POST "$BASE/login" -L \
+  -d "_token=$(tok $L /login)" -d "method=magic" -d "email=nobody@example.org")
+has "and says exactly the same for an address with no account" "$UNKNOWN" "on its way"
+hasnt "which was not emailed" "$(cat data/mail.log 2>/dev/null)" "nobody@example.org"
+
+# Pull the link out of the log the way the member would out of their inbox.
+LINK=$(grep -o '/auth/magic/callback?token=[A-Za-z0-9_-]*' data/mail.log | head -1)
+if [ -n "$LINK" ]; then
+  ok "a link was emailed"
+  J=$(mktemp)
+  want "following it signs them in" "$(code $J "$LINK")" "302"
+  want "and they are really signed in" "$(code $J /account)" "200"
+  want "following it again does not" "$(code $J "$LINK")" "302"
+  SPENT=$(curl -s -b $J -c $J -L "$BASE$LINK")
+  has "saying the link is spent" "$SPENT" "used already"
+else
+  bad "a link was emailed" "no sign-in link in data/mail.log"
+fi
+
+echo ""
+echo "Turning passwords off leaves organisers a way in"
+T=$(tok $A /admin/signin)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/signin" \
+  -d "_token=$T" -d "enabled[magic]=1" -d "signin_magic_minutes=15" \
+  -d "signin_admin_rescue=1" -d "signin_external_create=1"
+
+LOGIN=$(curl -s "$BASE/login")
+hasnt "members are no longer shown a password box" "$LOGIN" 'name="method" value="password"'
+has "but the organiser sign-in is offered" "$LOGIN" "rescue=1"
+
+R=$(mktemp)
+T=$(tok $R "/login?rescue=1")
+want "an organiser can still get in with a password" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -b $R -c $R -X POST "$BASE/login/rescue" \
+    -d "_token=$T" -d "email=ada@example.org" -d "password=correct-horse")" "302"
+want "and lands in the admin area" "$(code $R /admin)" "200"
+
+# The rescue is for organisers. A member reaching it must not get to bypass
+# the method the organisers chose for everybody.
+N=$(mktemp)
+T=$(tok $N "/login?rescue=1")
+curl -s -o /dev/null -b $N -c $N -X POST "$BASE/login/rescue" \
+  -d "_token=$T" -d "email=sam@example.org" -d "password=battery-staple"
+want "a member cannot use it" "$(code $N /account)" "302"
+
+# Put passwords back for whatever runs after this.
+T=$(tok $A /admin/signin)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/signin" \
+  -d "_token=$T" -d "enabled[password]=1" -d "enabled[magic]=1" \
+  -d "signin_magic_minutes=15" -d "signin_admin_rescue=1" -d "signin_external_create=1"
+
+echo ""
 echo "Access control"
 want "a member cannot reach the admin area" "$(code $M /admin)" "403"
 want "a signed-out visitor is redirected from the cart" "$(code /dev/null /cart)" "302"
