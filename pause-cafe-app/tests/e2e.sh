@@ -562,6 +562,23 @@ curl -s -o /dev/null -b $N -c $N -X POST "$BASE/login/rescue" \
   -d "_token=$T" -d "email=sam@example.org" -d "password=battery-staple"
 want "a member cannot use it" "$(code $N /account)" "302"
 
+# Every method off at once. The fallback has to put a password form back AND
+# have it work -- it used to render one that 500'd, which is the worst possible
+# time for that, because it is the state somebody is in when they are locked out.
+T=$(tok $A /admin/signin)
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/signin" \
+  -d "_token=$T" -d "signin_admin_rescue=1"
+
+LOGIN=$(curl -s "$BASE/login")
+has "with nothing switched on, a password form comes back" "$LOGIN" 'name="method" value="password"'
+
+F=$(mktemp)
+T=$(tok $F /login)
+want "and signing in with it works rather than erroring" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -b $F -c $F -X POST "$BASE/login" \
+    -d "_token=$T" -d "method=password" -d "email=ada@example.org" -d "password=correct-horse")" "302"
+want "landing the organiser in the admin area" "$(code $F /admin)" "200"
+
 # The lockout this all exists to prevent: passwords off, a provider that is
 # filled in but has never signed anybody in, and the rescue switched off too.
 # Saving that combination must not leave the site with no way in.
