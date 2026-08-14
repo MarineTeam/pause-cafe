@@ -8,6 +8,29 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.10.3 — 2026-08-14
+
+### Fixed
+
+- **With every sign-in method switched off, members could still sign in with a
+  password.** 0.10.2 made the fallback work; the trouble was the fallback
+  itself. Putting passwords back on the public login page re-admitted the whole
+  congregation to a site whose organisers had deliberately switched passwords
+  off — the opposite of what was asked for.
+
+  There is now no public fallback. With nothing switched on, the login page
+  offers nothing and says so. What survives is the organiser rescue, which is
+  checked against an organiser account and which a member cannot use.
+
+### Notes
+
+- The rescue is now **forced on whenever nothing else is available**, rather
+  than only being defended when the setting is saved. That holds even if a
+  provider is switched off, or stops being configured, long afterwards.
+- The guarantee is deliberately about organisers, not everybody. If the
+  organisers switch everything off, members cannot sign in, and that is the
+  correct outcome.
+
 ## 0.10.2 — 2026-08-14
 
 ### Fixed

@@ -14,7 +14,7 @@ each run and never touching `data/`.
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
 php -d extension=php_pdo_sqlite tests/test-app.php        # 332 assertions
-php -d extension=php_pdo_sqlite tests/test-signin.php     # 93 assertions
+php -d extension=php_pdo_sqlite tests/test-signin.php     # 96 assertions
 ```
 
 **`test-schedule.php`** — window resolution. Each of the three modes on its own,
@@ -87,7 +87,7 @@ and verifying need no config. The keys are public and protect nothing.
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 175 assertions
+bash tests/e2e.sh                                          # 179 assertions
 ```
 
 **`e2e.sh`** drives real HTTP with cookie jars: first-run setup, a bad CSRF token
