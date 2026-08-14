@@ -8,6 +8,25 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.10.2 — 2026-08-14
+
+### Fixed
+
+- **The fallback that puts passwords back drew a form that then refused to
+  work.** With every sign-in method switched off, the login page correctly
+  offered a password box — and submitting it produced "Something went wrong",
+  because the login route checked the enabled setting rather than what the page
+  had actually offered. The two disagreed, and the fallback lost.
+
+  This was the worst possible place for it: the fallback exists for people who
+  are locked out, and it failed precisely for them. `SignIn::resolve()` now gates
+  on the same list the login page renders from, so anything shown can be used.
+
+### Notes
+
+- `tools/rescue.php` was unaffected and remained a way back in throughout — it
+  sets the settings directly rather than going through the login route.
+
 ## 0.10.1 — 2026-08-14
 
 ### Fixed

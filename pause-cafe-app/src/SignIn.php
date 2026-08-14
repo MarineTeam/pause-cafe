@@ -179,6 +179,16 @@ class SignIn {
 	}
 
 	/**
+	 * The method to sign somebody in with.
+	 *
+	 * Gated on available() rather than on the enabled setting, and the
+	 * difference matters: available() is what the login page offers, and it
+	 * includes the fallback that puts passwords back when nothing else can
+	 * work. Checking the raw setting here instead meant the fallback drew a
+	 * password box and then refused it -- the safety net rendered a door that
+	 * would not open, which is worse than no safety net, because it looks fine
+	 * until somebody is locked out and trying to get back in.
+	 *
 	 * @throws \RuntimeException When it does not exist or is not usable.
 	 */
 	public static function resolve( string $id ): Method {
@@ -188,15 +198,17 @@ class SignIn {
 			throw new \RuntimeException( 'That way of signing in does not exist.' );
 		}
 
-		if ( ! self::isEnabled( $id ) ) {
-			throw new \RuntimeException( $method->label() . ' is switched off.' );
+		if ( self::isAvailable( $id ) ) {
+			return $method;
 		}
 
+		// Not available. Say which of the two reasons it is, since one is an
+		// organiser's mistake and the other is a missing setting.
 		if ( ! $method->isConfigured() ) {
 			throw new \RuntimeException( $method->label() . ' is not set up yet.' );
 		}
 
-		return $method;
+		throw new \RuntimeException( $method->label() . ' is switched off.' );
 	}
 
 	/** Test seam: drops the register so a test can install its own methods. */

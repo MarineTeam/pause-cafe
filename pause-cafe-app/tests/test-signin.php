@@ -516,6 +516,24 @@ Settings::setMany(
 
 check( 'with everything off, passwords come back', array_keys( SignIn::available() ), array( 'password' ) );
 
+/*
+ * And they have to actually work. The fallback used to be offered by the login
+ * page and then refused by resolve(), which checked the enabled setting rather
+ * than availability -- a safety net that drew a door which would not open. It
+ * only showed up when every method was off at once, which is exactly the state
+ * somebody is in when they need it.
+ */
+$fallback = SignIn::resolve( 'password' );
+
+check( 'and can be resolved, not just displayed', $fallback->id(), 'password' );
+check(
+	'and will really sign an organiser in',
+	$fallback->start(
+		array( 'email' => 'ruth@example.org', 'password' => 'a-good-password' )
+	)->isAuthenticated(),
+	true
+);
+
 Settings::set( 'signin_auth0_enabled', 'yes' );
 
 check( 'with a provider on, passwords step aside', array_keys( SignIn::available() ), array( 'auth0' ) );
