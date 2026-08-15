@@ -944,6 +944,15 @@ $router->post(
 				$message = 'Order cancelled. ' . Money::format( (int) $refund['delta_cents'] ) .
 					' went back to their wallet, leaving ' .
 					Money::format( Wallet::balance( (int) $order['user_id'] ) ) . '.';
+			} elseif ( Orders::refundedCents( $orderId ) > 0 ) {
+				/*
+				 * Charged, and every penny of it already returned before the
+				 * cancellation -- so there was nothing left to send back. Saying
+				 * "nothing had been charged" here would be plainly untrue to an
+				 * organiser looking at the order's refund history.
+				 */
+				$message = 'Order cancelled. ' . Money::format( Orders::refundedCents( $orderId ) ) .
+					' had already been refunded, so there was nothing left to give back.';
 			} elseif ( $paid ) {
 				// Money collected outside the wallet is not something the system
 				// can hand back.

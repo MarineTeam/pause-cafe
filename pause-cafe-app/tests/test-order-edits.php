@@ -300,6 +300,155 @@ $held   = (int) Orders::find( $order )['charged_cents'] - Orders::refundedCents(
 check( 'the wallet moved by exactly what the order took, and no more', $ledger, -$held );
 check( 'which after refunding everything is nothing at all', $held, 0 );
 
+/* =========================================================================
+ * Cancelling an order that has already had money back
+ *
+ * The bug these exist for: cancel() refunded total_cents -- what the food is
+ * worth -- instead of what was actually still owed. Those are the same number
+ * right up until a goodwill refund is issued, at which point cancelling handed
+ * back money on top of money already returned. A $20 order refunded $5 and then
+ * cancelled paid out $25 against a $20 charge.
+ *
+ * Every case below is stated as arithmetic on the ledger, because the order's
+ * own figures stayed self-consistent throughout the bug.
+ * ====================================================================== */
+
+echo "\nCancelling never gives back more than was taken\n";
+
+$roll = $dish( 'Roll', 500 );
+
+/*
+ * Everything the wallet did on account of one order: the original charge, every
+ * adjustment, and the cancellation refund. Summed, it is the member's net
+ * position -- so zero means they are square, and anything above zero means the
+ * order handed out money it never collected.
+ */
+$ledgerFor = static function ( int $orderId ): int {
+	$statement = \PauseCafe\Database::pdo()->prepare(
+		'SELECT COALESCE(SUM(delta_cents), 0) FROM wallet_entries
+		 WHERE reference = ? OR reference = ? OR reference LIKE ?'
+	);
+
+	$statement->execute( array( 'order:' . $orderId, 'refund:' . $orderId, 'adjust:' . $orderId . ':%' ) );
+
+	return (int) $statement->fetchColumn();
+};
+
+// A plain cancellation, which was never broken and must stay that way.
+$plain = Orders::place( $member, array( array( 'item_id' => $pie, 'qty' => 2 ) ) );
+
+check( 'a $20 order can have all of it back', Orders::refundableCents( $plain ), 2000 );
+
+Orders::cancel( $plain, $organiser );
+
+check( 'cancelling refunds the whole $20', Orders::refundEntryFor( $plain )['delta_cents'], 2000 );
+check( 'leaving the member square', $ledgerFor( $plain ), 0 );
+check( 'and nothing further to give back', Orders::refundableCents( $plain ), 0 );
+
+// The reported bug, exactly.
+$partial = Orders::place( $member, array( array( 'item_id' => $pie, 'qty' => 2 ) ) );
+
+Orders::refundAmount( $partial, 500, 'Short portion', $organiser );
+
+check( 'after a $5 goodwill refund, $15 is left', Orders::refundableCents( $partial ), 1500 );
+
+Orders::cancel( $partial, $organiser );
+
+check( 'cancelling gives back the $15, not the $20', Orders::refundEntryFor( $partial )['delta_cents'], 1500 );
+check( 'so $20 came back in total, against a $20 charge', Orders::refundedCents( $partial ), 2000 );
+check( 'and the member is square rather than $5 up', $ledgerFor( $partial ), 0 );
+
+// Already refunded in full: there is nothing left, and no entry should be
+// written pretending otherwise.
+$whole = Orders::place( $member, array( array( 'item_id' => $pie, 'qty' => 2 ) ) );
+
+Orders::refundAmount( $whole, 2000, 'Cancelled by phone', $organiser );
+
+check( 'a fully refunded order has nothing left', Orders::refundableCents( $whole ), 0 );
+
+Orders::cancel( $whole, $organiser );
+
+check( 'cancelling it writes no refund at all', Orders::refundEntryFor( $whole ), null );
+check( 'and the member is still square', $ledgerFor( $whole ), 0 );
+check( 'the order is cancelled all the same', Orders::find( $whole )['status'], 'cancelled' );
+
+// Several partial refunds, to be sure the cap is a sum and not the last one.
+$several = Orders::place( $member, array( array( 'item_id' => $pie, 'qty' => 2 ) ) );
+
+Orders::refundAmount( $several, 300, 'Late', $organiser );
+Orders::refundAmount( $several, 400, 'Wrong dish', $organiser );
+Orders::refundAmount( $several, 200, 'Goodwill', $organiser );
+
+check( 'three refunds are counted together', Orders::refundedCents( $several ), 900 );
+
+Orders::cancel( $several, $organiser );
+
+check( 'cancelling gives back only the remaining $11', Orders::refundEntryFor( $several )['delta_cents'], 1100 );
+check( 'squaring the order exactly', $ledgerFor( $several ), 0 );
+
+/*
+ * The full mixture: the order grows, part of it comes back, a line is removed,
+ * and then the whole thing is cancelled. $20 charged, $5 added, $3 refunded,
+ * the $5 line removed -- so $25 was taken and $8 returned, leaving $17.
+ */
+$mixed = Orders::place( $member, array( array( 'item_id' => $pie, 'qty' => 2 ) ) );
+
+Orders::addLine( $mixed, $roll, 1, array(), $organiser );
+
+check( 'adding a line raises what was taken', Orders::find( $mixed )['charged_cents'], 2500 );
+
+Orders::refundAmount( $mixed, 300, 'Cold', $organiser );
+
+$rollLine = 0;
+
+foreach ( Orders::lines( $mixed ) as $candidate ) {
+	if ( 'Roll' === $candidate['item_name'] ) {
+		$rollLine = (int) $candidate['id'];
+	}
+}
+
+Orders::setLineQty( $mixed, $rollLine, 0, $organiser );
+
+check( 'removing it gives that line back too', Orders::refundedCents( $mixed ), 800 );
+check( 'what the food is worth drops', Orders::find( $mixed )['total_cents'], 2000 );
+check( 'but what was taken does not', Orders::find( $mixed )['charged_cents'], 2500 );
+check( 'so $17 is still owed', Orders::refundableCents( $mixed ), 1700 );
+
+Orders::cancel( $mixed, $organiser );
+
+check( 'cancelling refunds exactly that $17', Orders::refundEntryFor( $mixed )['delta_cents'], 1700 );
+check( 'and not the $20 the food was worth', Orders::refundedCents( $mixed ), 2500 );
+check( 'leaving the member square on a mixed order', $ledgerFor( $mixed ), 0 );
+
+echo "\nAnd it cannot be done twice\n";
+
+$twice = Orders::place( $member, array( array( 'item_id' => $pie, 'qty' => 2 ) ) );
+
+Orders::cancel( $twice, $organiser );
+
+check_throws(
+	'a second cancellation is refused',
+	static fn() => Orders::cancel( $twice, $organiser ),
+	'already cancelled'
+);
+
+check( 'so the money went back once', $ledgerFor( $twice ), 0 );
+check( 'and once only', Orders::refundedCents( $twice ), 2000 );
+
+check_throws(
+	'a cancelled order cannot then be refunded again',
+	static fn() => Orders::refundAmount( $twice, 100, 'Trying it on', $organiser ),
+	'cancelled'
+);
+
+check( 'which leaves the ledger where it was', $ledgerFor( $twice ), 0 );
+
+check_throws(
+	'and a refund beyond what was charged is refused outright',
+	static fn() => Orders::refundAmount( Orders::place( $member, array( array( 'item_id' => $soup, 'qty' => 1 ) ) ), 5000, 'Too much', $organiser ),
+	'more than was paid'
+);
+
 if ( is_file( $logPath ) ) {
 	unlink( $logPath );
 }
