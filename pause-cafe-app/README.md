@@ -163,12 +163,37 @@ first-time signer lands unapproved and an organiser still has to let them in
 before they can buy lunch. Nothing an identity provider says can change that,
 and nothing it says can make anybody an organiser.
 
-**Accounts are matched on the provider's subject, not the email address.** The
-first time somebody signs in with a provider, their address decides which
-account they join — and only if the provider says it has confirmed that address.
-After that the link holds even if they change their address at the provider. The
-alternative, matching on the address every time, would mean whoever inherits an
-address at work inherits the wallet that went with it.
+**Accounts are matched on the provider's subject, not the email address.** Once
+somebody is linked, the link holds even if they change their address at the
+provider. The alternative, matching on the address every time, would mean
+whoever inherits an address at work inherits the wallet that went with it.
+
+**Making that link in the first place is the weak point**, because there is no
+subject to go on yet and only the address is left. A confirmed address says the
+provider believes this person can read that mailbox today — not that they are
+whoever opened the account here. Addresses get reassigned inside an
+organisation, recycled by a provider, and issued by tenants somebody else
+administers.
+
+So it depends on what the account is worth:
+
+- **Nothing to take** — no balance, no orders, not an organiser: it links on the
+  spot. That is the ordinary case, a member whose account an organiser typed in
+  last month signing in with Google for the first time, and making them wait
+  would cost far more than it protects.
+- **Money, a history of orders, or an organiser's account**: the sign-in is
+  refused and held as a claim under **Signing in → Waiting to be joined up**,
+  for an organiser who knows the congregation to approve or throw away.
+  Approving does not sign them in — they go back to the login page and come
+  through the provider again, on the subject like anybody else.
+
+An unconfirmed address still matches nothing at all and raises no claim, so
+there is nothing for an organiser to approve by mistake. Repeated attempts
+update the one claim rather than filling the screen.
+
+Note what this means for the rescue below: an organiser's **own** first external
+sign-in is held too, so proving the outside route works now means signing in,
+being held, having the link approved, and coming back.
 
 **Organisers cannot lock themselves out.** Note the word: *organisers*. If you
 switch every method off, members cannot sign in, and that is correct — you
@@ -549,14 +574,14 @@ kitchen report with print and CSV.
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php          #  51 assertions
 php -d extension=php_pdo_sqlite tests/test-app.php               # 352 assertions
-php -d extension=php_pdo_sqlite tests/test-signin.php            # 120 assertions
+php -d extension=php_pdo_sqlite tests/test-signin.php            # 158 assertions
 php -d extension=php_pdo_sqlite tests/test-design.php            #  67 assertions
 php -d extension=php_pdo_sqlite tests/test-orders-admin.php      #  28 assertions
-php -d extension=php_pdo_sqlite tests/test-order-edits.php       #  47 assertions
+php -d extension=php_pdo_sqlite tests/test-order-edits.php       #  76 assertions
 php -d extension=php_pdo_sqlite tests/test-menu-flexibility.php  #  18 assertions
 ```
 
-All of them run against a throwaway database and need no server. 683 in total.
+All of them run against a throwaway database and need no server. 750 in total.
 
 The HTTP layer — sessions, CSRF, approval gating, checkout, the side cart,
 access control — has its own end-to-end run against a live server:

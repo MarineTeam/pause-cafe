@@ -35,6 +35,7 @@ use PauseCafe\SignIn\Outcome;
 use PauseCafe\SignIn\PasswordMethod;
 use PauseCafe\SignIn\Profile;
 use PauseCafe\Users;
+use PauseCafe\Wallet;
 
 $logPath = dirname( __DIR__ ) . '/data/test-mail.log';
 
@@ -582,9 +583,36 @@ Identities::resolve( 'auth0', new Profile( 'auth0|a-member', 'member@example.org
 
 check( 'nor a member who has signed in that way', SignIn::rescueMayBeDisabled(), false );
 
-Identities::resolve( 'auth0', new Profile( 'auth0|ada', 'ada@example.org', true, 'Ada Organiser' ) );
+/*
+ * An organiser's first external sign-in is parked rather than linked, so
+ * proving the outside route now takes the full path: sign in, be held, have the
+ * link approved, come back. That is the bootstrap an organiser has to walk
+ * before giving up the password rescue, and it is worth walking here -- the
+ * rescue is what stops the site locking everybody out, and it must not become
+ * disableable on the strength of an attempt that was refused.
+ */
+$held = Identities::resolve( 'auth0', new Profile( 'auth0|ada', 'ada@example.org', true, 'Ada Organiser' ) );
 
-check( 'but an organiser who has is enough', SignIn::rescueMayBeDisabled(), true );
+check( 'an organiser is not linked on the strength of an address', $held->isAuthenticated(), false );
+check( 'and a refused attempt proves nothing', SignIn::rescueMayBeDisabled(), false );
+
+$waiting = Identities::pendingLinks();
+
+check( 'the attempt is waiting for a human', count( $waiting ), 1 );
+check( 'against the right account', (int) $waiting[0]['user_id'], $organiser );
+
+Identities::approveLink( (int) $waiting[0]['id'] );
+
+/*
+ * Approving does not sign anybody in; they come back through the provider. It
+ * is that second pass, on the subject rather than the address, that proves the
+ * route works.
+ */
+$backAgain = Identities::resolve( 'auth0', new Profile( 'auth0|ada', 'ada@example.org', true, 'Ada Organiser' ) );
+
+check( 'once approved they get in', $backAgain->isAuthenticated(), true );
+check( 'as themselves', (int) $backAgain->user()['id'], $organiser );
+check( 'and an organiser who has is enough', SignIn::rescueMayBeDisabled(), true );
 
 // And if that organiser is removed, the proof goes with them.
 Users::delete( $organiser );
@@ -790,6 +818,184 @@ $_SERVER['HTTPS'] = 'off';
 check( 'and "off" is not mistaken for yes', Notifications::baseUrl(), 'http://lunch.example.org' );
 
 unset( $_SERVER['HTTPS'] );
+
+/* =========================================================================
+ * An address is not enough to inherit an account worth taking
+ *
+ * The hole these exist for: a first external sign-in has no subject to match
+ * on, so only the address is left, and a match handed over the account on the
+ * spot. A confirmed address says the provider believes this person can read
+ * that mailbox today -- not that they are whoever opened the account here.
+ * Addresses get reassigned inside an organisation, recycled by a provider, and
+ * issued by tenants somebody else administers.
+ *
+ * The line drawn is worth-taking: money, a history of orders, or the admin
+ * area. Accounts with none of those still link straight away, because making
+ * their owners wait would cost far more than it protects.
+ * ====================================================================== */
+
+echo "\nAn account with money is not handed over on an address alone\n";
+
+$saver = Users::create( 'saver@example.org', 'a-good-password', 'Sam Saver', '', Users::ROLE_MEMBER, true );
+
+Wallet::credit( $saver, 4000, Wallet::KIND_TOPUP, 'float' );
+
+check( 'a balance makes the account worth protecting', Identities::needsApproval( $saver ), true );
+
+$grab = Identities::resolve(
+	'auth0',
+	new Profile( 'auth0|maybe-sam', 'saver@example.org', true, 'Sam Saver' )
+);
+
+check( 'so a confirmed address does not get in', $grab->isAuthenticated(), false );
+check( 'nothing is linked', Identities::find( 'auth0', 'auth0|maybe-sam' ), null );
+check( 'and the money is untouched', Wallet::balance( $saver ), 4000 );
+check( 'the person is told what is happening', str_contains( $grab->message(), 'organiser' ), true );
+
+$queued = Identities::pendingLinks();
+
+check( 'the claim is waiting for a human', count( $queued ), 1 );
+check( 'naming the account it wants', (int) $queued[0]['user_id'], $saver );
+check( 'and the address that asked', $queued[0]['email'], 'saver@example.org' );
+
+// Trying repeatedly must not bury the screen the organiser reads.
+Identities::resolve( 'auth0', new Profile( 'auth0|maybe-sam', 'saver@example.org', true, 'Sam Saver' ) );
+Identities::resolve( 'auth0', new Profile( 'auth0|maybe-sam', 'saver@example.org', true, 'Sam Saver' ) );
+
+check( 'trying again leaves one claim, not three', count( Identities::pendingLinks() ), 1 );
+
+echo "\nA second provider gets no free pass from the first\n";
+
+$other = Identities::resolve(
+	'supabase',
+	new Profile( 'supabase|maybe-sam', 'saver@example.org', true, 'Sam Saver' )
+);
+
+check( 'the same address at another provider is held too', $other->isAuthenticated(), false );
+check( 'as a claim of its own', count( Identities::pendingLinks() ), 2 );
+
+echo "\nDeclining a claim leaves nothing behind\n";
+
+$supabaseClaim = 0;
+
+foreach ( Identities::pendingLinks() as $candidate ) {
+	if ( 'supabase' === $candidate['provider'] ) {
+		$supabaseClaim = (int) $candidate['id'];
+	}
+}
+
+Identities::declineLink( $supabaseClaim );
+
+check( 'it is gone from the list', count( Identities::pendingLinks() ), 1 );
+check( 'and still nothing is linked', Identities::find( 'supabase', 'supabase|maybe-sam' ), null );
+
+$again = Identities::resolve(
+	'supabase',
+	new Profile( 'supabase|maybe-sam', 'saver@example.org', true, 'Sam Saver' )
+);
+
+check( 'a declined signer is refused, not admitted', $again->isAuthenticated(), false );
+
+/*
+ * Being turned down is not a ban -- they can ask again, and asking again parks
+ * a fresh claim. That is deliberate: a decline is usually "I do not know who
+ * this is yet", not "never". Cleared here so the counts below are about what
+ * each step does rather than what this one left lying around.
+ */
+check( 'though asking again does park a fresh claim', count( Identities::pendingLinks() ), 2 );
+
+foreach ( Identities::pendingLinks() as $candidate ) {
+	if ( 'supabase' === $candidate['provider'] ) {
+		Identities::declineLink( (int) $candidate['id'] );
+	}
+}
+
+check( 'and clearing it leaves only the first', count( Identities::pendingLinks() ), 1 );
+
+echo "\nApproving is what joins them up\n";
+
+$samClaim = 0;
+
+foreach ( Identities::pendingLinks() as $candidate ) {
+	if ( 'auth0' === $candidate['provider'] ) {
+		$samClaim = (int) $candidate['id'];
+	}
+}
+
+check( 'the organiser can approve it', Identities::approveLink( $samClaim ), true );
+check( 'which spends the claim', Identities::pendingLink( $samClaim ), null );
+
+/*
+ * Approving does not sign anybody in -- the organiser is at their own screen,
+ * not the member's. The member comes back through the provider, and this time
+ * matches on the subject like anybody else.
+ */
+$admitted = Identities::resolve(
+	'auth0',
+	new Profile( 'auth0|maybe-sam', 'saver@example.org', true, 'Sam Saver' )
+);
+
+check( 'and now they get in', $admitted->isAuthenticated(), true );
+check( 'as the account they asked for', (int) $admitted->user()['id'], $saver );
+check( 'with the balance still there', Wallet::balance( $saver ), 4000 );
+
+echo "\nAn empty account still links on the spot\n";
+
+$fresh = Users::create( 'fresh@example.org', 'a-good-password', 'Fred Fresh', '', Users::ROLE_MEMBER, true );
+
+check( 'nothing to take means nothing to guard', Identities::needsApproval( $fresh ), false );
+
+$straight = Identities::resolve(
+	'auth0',
+	new Profile( 'auth0|fred', 'fresh@example.org', true, 'Fred Fresh' )
+);
+
+check( 'so they are signed straight in', $straight->isAuthenticated(), true );
+check( 'as themselves', (int) $straight->user()['id'], $fresh );
+check( 'and no organiser is troubled', count( Identities::pendingLinks() ), 0 );
+
+echo "\nAn organiser account is guarded whether or not it holds money\n";
+
+$empty = Users::create( 'chair@example.org', 'a-good-password', 'Chris Chair', '', Users::ROLE_ADMIN, true );
+
+check( 'the role alone is enough', Identities::needsApproval( $empty ), true );
+
+$reach = Identities::resolve(
+	'auth0',
+	new Profile( 'auth0|maybe-chris', 'chair@example.org', true, 'Chris Chair' )
+);
+
+check( 'so it is held as well', $reach->isAuthenticated(), false );
+
+Identities::declineLink( (int) Identities::pendingLinks()[0]['id'] );
+
+echo "\nAnd an unconfirmed address never even gets that far\n";
+
+$sneak = Identities::resolve(
+	'auth0',
+	new Profile( 'auth0|sneak', 'saver@example.org', false, 'Not Sam' )
+);
+
+check( 'it is refused outright', $sneak->isAuthenticated(), false );
+check( 'with no claim raised for an organiser to mis-approve', count( Identities::pendingLinks() ), 0 );
+
+echo "\nA recycled address cannot walk into the account that had it\n";
+
+/*
+ * The scenario the audit named: somebody leaves, their address is reassigned,
+ * and the new holder signs in. The provider confirms the address honestly --
+ * it is theirs now. What they must not get is the leaver's account.
+ */
+$successorClaim = Identities::resolve(
+	'auth0',
+	new Profile( 'auth0|new-holder', 'saver@example.org', true, 'New Holder' )
+);
+
+check( 'the new holder is not signed in as the old one', $successorClaim->isAuthenticated(), false );
+check( 'the original link is untouched', (int) Identities::find( 'auth0', 'auth0|maybe-sam' )['user_id'], $saver );
+check( 'and it is an organiser who decides', count( Identities::pendingLinks() ), 1 );
+
+Identities::declineLink( (int) Identities::pendingLinks()[0]['id'] );
 
 if ( is_file( $logPath ) ) {
 	unlink( $logPath );
