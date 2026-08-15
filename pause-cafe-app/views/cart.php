@@ -100,6 +100,19 @@ $problems = $cart['problems'];
 							<?php // Carries the whole form, so nothing typed is lost on the way out. ?>
 							<button type="submit" class="link-button" formaction="/cart/remove"
 								name="index" value="<?= (int) $line['index'] ?>">Remove</button>
+
+							<?php if ( $line['qty'] > 1 ) : ?>
+								<?php
+								/*
+								 * One line can hold one name, and two of a dish is usually
+								 * two children. This breaks it into a line each, so every
+								 * meal gets its own name, group and note.
+								 */
+								?>
+								<br>
+								<button type="submit" class="link-button" formaction="/cart/split"
+									name="index" value="<?= (int) $line['index'] ?>">Name each<br>separately</button>
+							<?php endif; ?>
 						</td>
 					</tr>
 				<?php endforeach; ?>

@@ -79,6 +79,42 @@ class Cart {
 		self::store( $lines );
 	}
 
+	/**
+	 * Breaks one line of quantity N into N lines of one.
+	 *
+	 * Two of the same dish is more often two children than one hungry adult,
+	 * and a single line can only carry one name. Splitting gives each meal its
+	 * own name, group and note -- which is what the kitchen reads off the sheet
+	 * on Sunday. The copies keep the original's answers so a split is a
+	 * starting point rather than a blank slate.
+	 *
+	 * @return int How many lines the one became.
+	 */
+	public static function split( int $index ): int {
+		$lines = self::lines();
+
+		if ( ! isset( $lines[ $index ] ) ) {
+			return 0;
+		}
+
+		$line = $lines[ $index ];
+		$qty  = max( 1, (int) $line['qty'] );
+
+		if ( 1 === $qty ) {
+			return 1;
+		}
+
+		$line['qty'] = 1;
+
+		// Spliced in place, so the copies sit together where the original was
+		// rather than jumping to the bottom of a long cart.
+		array_splice( $lines, $index, 1, array_fill( 0, $qty, $line ) );
+
+		self::store( $lines );
+
+		return $qty;
+	}
+
 	public static function remove( int $index ): void {
 		$lines = self::lines();
 

@@ -14,6 +14,7 @@ fresh_database();
 
 require dirname( __DIR__ ) . '/src/bootstrap.php';
 
+use PauseCafe\Cart;
 use PauseCafe\Groups;
 use PauseCafe\Kitchen;
 use PauseCafe\Mail\LogTransport;
@@ -688,6 +689,45 @@ check( 'signing out revokes it', Kitchen::hasAccess(), false );
 
 Kitchen::setPassword( '' );
 check( 'clearing it goes back to organisers only', Kitchen::isProtected(), false );
+
+/* ------------------------------------------------------------------ */
+
+echo "\nSplitting a cart line so each meal gets a name\n";
+
+/*
+ * Two of the same dish is more often two children than one hungry adult, and a
+ * line can only carry one name. The side cart offers to break it up; this is
+ * what that does to the session.
+ */
+$_SESSION = array();
+
+Cart::add( 1, 2, array( MenuFields::PERSON => 'Twins', MenuFields::NOTE => 'no onions' ) );
+Cart::add( 1, 1, array( MenuFields::PERSON => 'Alone' ) );
+
+check( 'the cart starts as two lines', count( Cart::lines() ), 2 );
+check( 'holding three meals', Cart::count(), 3 );
+
+check( 'splitting reports what it made', Cart::split( 0 ), 2 );
+
+$split = Cart::lines();
+
+check( 'the pair became a line each', count( $split ), 3 );
+check( 'and the total is unchanged', Cart::count(), 3 );
+check( 'each new line is a single meal', array( $split[0]['qty'], $split[1]['qty'] ), array( 1, 1 ) );
+check( 'both start from the original answers', $split[1]['person_name'], 'Twins' );
+check( 'notes and all, so nothing is retyped', $split[1]['note'], 'no onions' );
+
+// Spliced in place: a split at the top of a long cart must not send the copies
+// to the bottom, away from the line they came from.
+check( 'the line after it keeps its place', $split[2]['person_name'], 'Alone' );
+
+check( 'splitting a single meal is a no-op', Cart::split( 2 ), 1 );
+check( 'which leaves the cart alone', count( Cart::lines() ), 3 );
+check( 'and an index that is not there does nothing', Cart::split( 99 ), 0 );
+check( 'nor does a negative one', Cart::split( -1 ), 0 );
+check( 'the cart is still what it was', count( Cart::lines() ), 3 );
+
+Cart::clear();
 
 echo "\nDate range presets\n";
 

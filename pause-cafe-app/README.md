@@ -227,6 +227,25 @@ flags them in Settings rather than silently clearing their group.
 
 Until at least one group exists the field does not appear at all.
 
+### The side cart
+
+Adding a meal opens a drawer down the side of the page listing what is in the
+cart so far, and leaves the menu where it was. A parent ordering for three
+children adds a name, adds the next, and only then presses **Checkout** — rather
+than being sent to the cart page and having to walk back for each one.
+
+Two of the same dish is usually two different children, and a line can only
+carry one name. Where a line has more than one meal on it, both the drawer and
+the cart page offer **Name each separately**, which breaks it into a line each,
+carrying the original's answers over so nothing has to be retyped.
+
+**The drawer is an enhancement, not a dependency.** It is the only JavaScript in
+the app. Without it — blocked, failed to load, or erroring — **Add** posts and
+redirects to the cart page, which is how the site worked before it existed. The
+script hands anything unexpected back to the browser for the same reason: an
+expired form token lands on the real error page rather than on a drawer
+inventing an explanation.
+
 ## Paying
 
 Payment methods are a register, not a hardcoded wallet. Two ship with the app,
@@ -275,19 +294,37 @@ It follows the active mode: a month grid for **planned**, a single row for
 plus a from/until per row for **manual**.
 
 **The list** at `/admin/menu` — one dish at a time, for a price, a description,
-a portion limit or a per-dish window override.
+a portion limit, a schedule, or a per-dish window override.
 
 Clearing a cell in the grid moves that dish to draft rather than deleting it, so
 anything ordered against it keeps its history. Days already served are
 read-only.
+
+### One-offs
+
+Some things have no weekly rhythm at all: a box of chocolates, a Christmas menu
+once a year, something that needs a fortnight's notice. Tick **Show whenever it
+can be ordered** on the dish editor and set the from and until dates yourself.
+
+A one-off is kept out of the weekly machinery entirely. It appears in its own
+undated **Also available** section under the menu, and never adds a week to the
+front page, occupies a cell in the grid, or gets touched by building a month.
+It is still listed on `/admin/menu` like any other dish.
+
+Without this the only way to sell one was to give it a service date, which
+created a section for that day and pushed the real menu down behind it.
+
+Everything in one order still has to be for the same day, so a one-off whose
+window lands on a different date is ordered separately from that Sunday's lunch.
 
 ## Finding your way round
 
 The organiser menu sits across the top, or down the side like WordPress —
 whichever each organiser prefers. It is stored on the account, so moving it does
 not move it for anyone else, and the link to flip it is in the menu itself. On a
-narrow screen the sidebar folds back to the top, because a sidebar on a phone is
-just a list to scroll past.
+narrow screen the sidebar becomes a slide-out drawer behind a **Menu** button,
+with tap-sized rows — it used to fold back to the top, where it sat above every
+screen and had to be scrolled past to reach anything.
 
 Long screens carry a **Jump to** row at the top. Settings has one; anything else
 that grows can add one by setting `$jump` and including
@@ -510,22 +547,32 @@ kitchen report with print and CSV.
 ## Tests
 
 ```bash
-php -d extension=php_pdo_sqlite tests/test-schedule.php   # 51 assertions
-php -d extension=php_pdo_sqlite tests/test-app.php        # 71 assertions
+php -d extension=php_pdo_sqlite tests/test-schedule.php          #  51 assertions
+php -d extension=php_pdo_sqlite tests/test-app.php               # 352 assertions
+php -d extension=php_pdo_sqlite tests/test-signin.php            # 120 assertions
+php -d extension=php_pdo_sqlite tests/test-design.php            #  67 assertions
+php -d extension=php_pdo_sqlite tests/test-orders-admin.php      #  28 assertions
+php -d extension=php_pdo_sqlite tests/test-order-edits.php       #  47 assertions
+php -d extension=php_pdo_sqlite tests/test-menu-flexibility.php  #  18 assertions
 ```
 
-Both run against a throwaway database and need no server.
+All of them run against a throwaway database and need no server. 683 in total.
 
-The HTTP layer — sessions, CSRF, approval gating, checkout, access control — has
-its own end-to-end run against a live server:
+The HTTP layer — sessions, CSRF, approval gating, checkout, the side cart,
+access control — has its own end-to-end run against a live server:
 
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                          # 28 assertions
+bash tests/e2e.sh                                                # 270 assertions
 ```
 
 It expects an empty database, since it drives first-run setup itself.
+
+The one piece no suite covers is the side cart's JavaScript, which needs a
+browser. Its server side is covered above, and the fallback is the point: with
+the script gone, every form it touches posts and redirects exactly as it did
+before the script existed.
 
 ## Security notes
 

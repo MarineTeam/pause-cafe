@@ -8,6 +8,52 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## 0.14.0 — 2026-08-14
+
+### Added
+
+- **A side cart.** Adding a meal now opens a drawer listing the cart so far and
+  leaves the menu where it was, so a parent ordering for three children adds a
+  name, adds the next, and presses **Checkout** once — instead of being sent to
+  the cart page and walking back for each one.
+- **Name each separately**, on a line holding more than one meal. Two of a dish
+  is usually two children, and a line can only carry one name; this breaks it
+  into a line each, carrying the original's answers over. Offered in the drawer
+  and on the cart page.
+- **A schedule picker on the single-dish editor.** Dishes added there always
+  landed on the default schedule, so the only way to give one its own timing was
+  to change the schedule every other dish was on.
+- **One-off dishes** — a box of chocolates, a Christmas menu, something needing
+  a fortnight's notice. Tick **Show whenever it can be ordered**, set the from
+  and until dates, and it appears in its own undated **Also available** section.
+- The organiser sidebar is a **slide-out drawer** on a phone, with tap-sized
+  rows, rather than folding to the top of every screen.
+
+### Fixed
+
+- Faking a one-off by giving it a midweek service date created a section for
+  that day on the front page and hid the Sunday menu behind it. One-offs are now
+  kept out of the weekly sections, the front page's list of dates, and the month
+  builder's grid, while staying listed on the admin menu screen.
+- `menu_items.open_from` and `close_at` kept whatever string they were handed.
+  That was fine while the only caller was a `datetime-local` input, but a value
+  a hair off that format — a space where the `T` should be — parsed as nothing
+  and left the dish quietly unorderable with no error anywhere to explain why.
+  Both are canonicalised on save and the parser accepts either separator.
+
+### Notes
+
+- **`cart.js` is the only JavaScript in the app, and nothing depends on it.**
+  Every form it touches is an ordinary form; without the script, **Add** posts
+  and redirects to the cart page exactly as before. The script hands anything
+  unexpected — an expired token, a dropped connection — straight back to the
+  browser, so the real reason is shown on the real page rather than guessed at
+  in a drawer.
+- The drawer is closed with `visibility: hidden`, not only a transform. An
+  off-screen panel that is still visible is still in the tab order.
+- Everything in one order still has to be for the same day, so a one-off whose
+  window lands on another date is ordered separately from that Sunday's lunch.
+
 ## 0.13.0 — 2026-08-14
 
 ### Added
