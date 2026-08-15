@@ -78,10 +78,15 @@ class Menu {
 		bool $publishedOnly = true,
 		$scheduleId = null
 	): array {
+		/*
+		 * Standalone dishes are excluded here on purpose. They are gathered by
+		 * standaloneItems() instead, and a one-off whose date happened to land
+		 * on a service day would otherwise appear in both places at once.
+		 */
 		$sql    = 'SELECT i.*, l.name AS location_name
 				   FROM menu_items i
 				   LEFT JOIN locations l ON l.id = i.location_id
-				   WHERE 1 = 1';
+				   WHERE i.standalone = 0';
 		$params = array();
 
 		if ( $publishedOnly ) {
@@ -127,6 +132,41 @@ class Menu {
 	}
 
 	/**
+	 * Dishes that belong to no weekly rhythm, and can be ordered right now.
+	 *
+	 * A Christmas menu, a box of chocolates, something wanting a fortnight's
+	 * notice. They are kept out of the per-schedule sections entirely: their
+	 * whole point is that they do not have a service date the storefront should
+	 * organise around, so they are gathered by whether their own window is open
+	 * rather than by which week it is.
+	 *
+	 * @return array[]
+	 */
+	public static function standaloneItems( bool $includePreview = true ): array {
+		$rows = Database::pdo()
+			->query( "SELECT i.*, l.name AS location_name
+					  FROM menu_items i
+					  LEFT JOIN locations l ON l.id = i.location_id
+					  WHERE i.standalone = 1 AND i.status = 'published'
+					  ORDER BY l.sort_order, i.name" )
+			->fetchAll();
+
+		$items = array();
+
+		foreach ( $rows as $row ) {
+			$decorated = self::decorate( $row );
+
+			// Orderable now, or visible-but-not-yet-open when previewing is on
+			// for its schedule -- the same two states a weekly dish can be in.
+			if ( $decorated['window']->isOrderable() || ( $includePreview && $decorated['window']->isListed() ) ) {
+				$items[] = $decorated;
+			}
+		}
+
+		return $items;
+	}
+
+	/**
 	 * @return array[] Every published item, decorated.
 	 */
 	public static function allItems( bool $publishedOnly = false ): array {
@@ -156,6 +196,17 @@ class Menu {
 
 		foreach ( self::allItems( true ) as $item ) {
 			if ( null !== $scheduleId && (int) ( $item['schedule_id'] ?? 0 ) !== (int) $scheduleId ) {
+				continue;
+			}
+
+			/*
+			 * A one-off must not open a week of its own. Its window still derives
+			 * a service date -- the kitchen list needs one -- but a Wednesday box
+			 * of chocolates was pushing a Wednesday section onto the front page
+			 * and, where the page shows a fixed number of weeks, pushing the
+			 * Sunday menu off the end of it.
+			 */
+			if ( ! empty( $item['standalone'] ) ) {
 				continue;
 			}
 
@@ -202,10 +253,12 @@ class Menu {
 			return null;
 		}
 
+		// Standalone dishes own no cell. Were one matched here the builder would
+		// treat it as that week's dish and rename or republish it on save.
 		$sql    = 'SELECT i.*, l.name AS location_name
 				   FROM menu_items i
 				   LEFT JOIN locations l ON l.id = i.location_id
-				   WHERE i.service_date = ? AND i.location_id = ?';
+				   WHERE i.standalone = 0 AND i.service_date = ? AND i.location_id = ?';
 		$params = array( $serviceDate, $locationId );
 
 		// Two schedules can serve the same location on the same day, so the cell
@@ -285,6 +338,20 @@ class Menu {
 	 * @return int The item ID.
 	 */
 	public static function save( array $data, ?int $id = null ): int {
+		/*
+		 * Timestamps are canonicalised on the way in. The column used to keep
+		 * whatever string the caller handed it, which was fine while the only
+		 * caller was a datetime-local input posting Y-m-dTH:i -- but anything a
+		 * hair off that, a space instead of the T, parsed as nothing at all and
+		 * the dish went quietly unorderable with no error anywhere to explain
+		 * why. Storing one format means the resolver only has to read one.
+		 */
+		$stamp = static function ( $value ): string {
+			$parsed = Schedule::parseDateTime( trim( (string) $value ) );
+
+			return $parsed ? $parsed->format( 'Y-m-d H:i:s' ) : '';
+		};
+
 		$fields = array(
 			'location_id'  => (int) ( $data['location_id'] ?? 0 ),
 			'name'         => trim( (string) ( $data['name'] ?? '' ) ),
@@ -292,14 +359,16 @@ class Menu {
 			'price_cents'  => (int) ( $data['price_cents'] ?? 0 ),
 			'service_date' => (string) ( $data['service_date'] ?? '' ),
 			'opened_at'    => (string) ( $data['opened_at'] ?? '' ),
-			'open_from'    => (string) ( $data['open_from'] ?? '' ),
-			'close_at'     => (string) ( $data['close_at'] ?? '' ),
+			'open_from'    => $stamp( $data['open_from'] ?? '' ),
+			'close_at'     => $stamp( $data['close_at'] ?? '' ),
 			'capacity'     => max( 0, (int) ( $data['capacity'] ?? 0 ) ),
 			'status'       => 'draft' === ( $data['status'] ?? 'published' ) ? 'draft' : 'published',
 			// NULL is the default schedule, whose rules live in settings.
 			'schedule_id'  => ( (int) ( $data['schedule_id'] ?? 0 ) ) > 0 ? (int) $data['schedule_id'] : null,
 			'field_rules'  => (string) ( $data['field_rules'] ?? '' ),
 			'image_path'   => (string) ( $data['image_path'] ?? '' ),
+			// Not part of any weekly rhythm; shows on its own dates.
+			'standalone'   => !empty( $data['standalone'] ) ? 1 : 0,
 		);
 
 		$pdo = Database::pdo();

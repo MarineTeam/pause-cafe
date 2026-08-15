@@ -966,6 +966,41 @@ has "a details edit lands" "$(curl -s -b $A -c $A "$BASE/admin/orders/$EDIT_ID/e
 want "and emails nobody" "$(grep -c 'order has changed' data/mail.log 2>/dev/null || echo 0)" "$MAILS"
 
 echo ""
+echo "One-off dishes"
+# The single-dish editor had no schedule field at all, so this first assertion
+# is the whole of that fix: the control has to be on the form.
+NEWDISH=$(curl -s -b $A -c $A "$BASE/admin/menu/new")
+has "the dish editor offers a schedule" "$NEWDISH" 'name="schedule_id"'
+has "and a standalone switch" "$NEWDISH" 'name="standalone"'
+
+# Counted before the one-off exists, so the assertion below is about what the
+# one-off changed rather than about whatever the run happens to have published.
+WEEKS_BEFORE=$(curl -s -b $M -c $M "$BASE/" | grep -c 'class="week__date"')
+
+# A box of chocolates: no weekly rhythm, its own long window.
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
+  -d "_token=$(tok $A /admin/menu/new)" \
+  -d "name=Box of chocolates" -d "location_id=1" -d "price=15.00" \
+  -d "status=published" -d "standalone=1" -d "schedule_id=0" \
+  -d "open_from=2026-01-01T00:00" -d "close_at=2036-12-24T12:00"
+
+FRONT=$(curl -s -b $M -c $M "$BASE/")
+has "a one-off appears in its own section" "$FRONT" "Also available"
+has "and is on the page" "$FRONT" "Box of chocolates"
+
+# The reported bug: faking a one-off with an off-day service date pushed a
+# dated section onto the front page and hid the real menu behind it. Its own
+# section carries no date, so the count of dated weeks must not have moved.
+want "without adding a week to the front page" "$(printf '%s' "$FRONT" | grep -c 'class="week__date"')" "$WEEKS_BEFORE"
+
+# And it is a real dish, not just a listing.
+ONEOFF_ID=$(printf '%s' "$FRONT" | tr -d '\r\n' | grep -o 'Box of chocolates.*' \
+  | grep -o 'name="item_id" value="[0-9]*"' | head -1 | grep -o '[0-9][0-9]*')
+curl -s -o /dev/null -b $M -c $M -X POST "$BASE/cart/add" \
+  -d "_token=$(tok $M /)" -d "item_id=$ONEOFF_ID" -d "person_name=Sam Member" -d "quantity=1"
+has "a one-off can be put in the cart" "$(curl -s -b $M -c $M "$BASE/cart")" "Box of chocolates"
+
+echo ""
 echo "Access control"
 want "a member cannot reach the admin area" "$(code $M /admin)" "403"
 want "a signed-out visitor is redirected from the cart" "$(code /dev/null /cart)" "302"

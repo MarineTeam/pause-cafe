@@ -13,6 +13,10 @@ foreach ( $sections as $section ) {
 		break;
 	}
 }
+
+// A site with only one-offs on it still has a menu, so "nothing published yet"
+// must not appear above a section full of dishes.
+$anything = $anything || (bool) $standalone;
 ?>
 
 <div class="menu-head">
@@ -114,4 +118,35 @@ foreach ( $sections as $section ) {
 		</section>
 	<?php endforeach; ?>
 
+<?php endif; ?>
+
+<?php
+/*
+ * One-off dishes, after the weekly menu.
+ *
+ * Deliberately its own section rather than mixed into a week: these have no
+ * service date the page should organise around, and putting a Christmas menu
+ * inside "Sunday 16 August" would be a lie about when it is for.
+ */
+?>
+<?php if ( $standalone ) : ?>
+	<section class="menu-section">
+		<div class="week">
+			<h2 class="week__name">Also available</h2>
+			<p class="menu-state">Order these any time while they are open.</p>
+		</div>
+
+		<ul class="dishes" style="--cols: <?= (int) $columns ?>">
+			<?php foreach ( $standalone as $entry ) : ?>
+				<?php
+				$dc = array(
+					'item'     => $entry,
+					'location' => (string) ( $entry['location_name'] ?? '' ),
+				);
+
+				include \PauseCafe\View::locate( 'partials/dish-card' );
+				?>
+			<?php endforeach; ?>
+		</ul>
+	</section>
 <?php endif; ?>

@@ -397,6 +397,17 @@ class Database {
 		// its typographic layout, which is the normal case.
 		self::addColumnIfMissing( 'menu_items', 'image_path', "TEXT NOT NULL DEFAULT ''" );
 
+		/*
+		 * A dish that is not part of any weekly rhythm.
+		 *
+		 * A Christmas menu, a box of chocolates, something needing a fortnight's
+		 * notice. It shows whenever its own from/until allow, in its own section,
+		 * rather than only during whichever week its schedule currently points
+		 * at. Without this the only way to give one dish odd timing was to
+		 * change the schedule every other dish shares.
+		 */
+		self::addColumnIfMissing( 'menu_items', 'standalone', 'INTEGER NOT NULL DEFAULT 0' );
+
 		// Where this organiser wants the admin navigation: top or side. On the
 		// account rather than in settings, so one organiser's preference is not
 		// imposed on the others.

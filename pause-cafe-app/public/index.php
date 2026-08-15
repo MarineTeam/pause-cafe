@@ -209,9 +209,12 @@ $router->get(
 		echo View::render(
 			'menu',
 			array(
-				'title'    => Settings::get( 'menu_heading' ),
-				'sections' => $sections,
-				'columns'  => max( 1, min( 6, Settings::int( 'front_grid_columns', 3 ) ) ),
+				'title'      => Settings::get( 'menu_heading' ),
+				'sections'   => $sections,
+				// One-offs, shown for as long as they can be ordered rather than
+				// during a particular week.
+				'standalone' => Menu::standaloneItems(),
+				'columns'    => max( 1, min( 6, Settings::int( 'front_grid_columns', 3 ) ) ),
 			)
 		);
 	}
