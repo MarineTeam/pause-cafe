@@ -12,6 +12,23 @@ Notable changes to the standalone app. Dates are the day the change landed on
 
 ### Security
 
+- **An external provider could hand over an existing account on a confirmed
+  address alone.** The first sign-in through a provider has no subject to match
+  on, so only the address was left, and a match linked and signed in on the
+  spot. A confirmed address says the provider believes somebody can read that
+  mailbox today — not that they are whoever opened the account here, which is a
+  real gap when addresses get reassigned, recycled, or issued by a tenant
+  somebody else administers. Accounts holding money, carrying orders, or
+  belonging to an organiser now hold the sign-in as a claim for an organiser to
+  approve; accounts with nothing to take still link immediately. Reported by a
+  security audit.
+
+### Changed
+
+- An organiser's own first external sign-in is held for approval like anyone
+  else's, so proving the outside route before switching off the password rescue
+  now takes the full path: sign in, be held, have the link approved, come back.
+
 - **Cancelling an order could refund more than was ever charged.** `cancel()`
   gave back `total_cents` — what the food is worth — rather than what was still
   owed. The two are the same number until something has already been refunded,

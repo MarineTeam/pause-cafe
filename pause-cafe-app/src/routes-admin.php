@@ -1587,6 +1587,7 @@ $router->get(
 				'title'   => 'Signing in',
 				'methods' => SignIn::all(),
 				'links'   => Identities::all(),
+				'pending' => Identities::pendingLinks(),
 			)
 		);
 	}
@@ -1654,6 +1655,38 @@ $router->post(
 		}
 
 		View::flash( 'success', 'Sign-in settings saved.' );
+		View::redirect( '/admin/signin' );
+	}
+);
+
+$router->post(
+	'/admin/signin/link',
+	static function () use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$id = (int) ( $_POST['id'] ?? 0 );
+
+		if ( 'approve' !== $post( 'decision' ) ) {
+			Identities::declineLink( $id );
+
+			View::flash( 'success', 'That request was turned down. Nothing was joined up.' );
+			View::redirect( '/admin/signin' );
+		}
+
+		$request = Identities::pendingLink( $id );
+
+		if ( ! $request || ! Identities::approveLink( $id ) ) {
+			View::flash( 'error', 'That request is no longer there.' );
+			View::redirect( '/admin/signin' );
+		}
+
+		View::flash(
+			'success',
+			'Joined up. ' . $request['email'] . ' can now sign in through '
+			. SignIn::label( (string) $request['provider'] ) . ' — they will need to go back and try again.'
+		);
+
 		View::redirect( '/admin/signin' );
 	}
 );

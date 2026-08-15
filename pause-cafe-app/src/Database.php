@@ -294,6 +294,37 @@ class Database {
 		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_identity_user ON user_identities (user_id)' );
 
 		/*
+		 * External sign-ins waiting for an organiser to say they are the same
+		 * person as an account that already exists here.
+		 *
+		 * A verified address is good evidence and poor proof. Addresses get
+		 * reassigned inside an organisation, recycled by a provider, or come
+		 * from a tenant somebody else administers -- so matching one against an
+		 * account holding money is a claim, not an identity. The claim is parked
+		 * here for a human who knows the congregation to accept or throw away.
+		 *
+		 * Unique on (provider, subject) so a signer who keeps trying leaves one
+		 * row rather than a queue of them.
+		 */
+		$pdo->exec(
+			"CREATE TABLE IF NOT EXISTS identity_link_requests (
+				id         INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id    INTEGER NOT NULL,
+				provider   TEXT    NOT NULL,
+				subject    TEXT    NOT NULL,
+				email      TEXT    NOT NULL DEFAULT '',
+				name       TEXT    NOT NULL DEFAULT '',
+				created_at TEXT    NOT NULL,
+				last_try_at TEXT   NOT NULL DEFAULT ''
+			)"
+		);
+
+		$pdo->exec(
+			'CREATE UNIQUE INDEX IF NOT EXISTS idx_link_request_subject
+				ON identity_link_requests (provider, subject)'
+		);
+
+		/*
 		 * Single-use sign-in links.
 		 *
 		 * Only the hash of the token is kept. A leaked backup of this table is

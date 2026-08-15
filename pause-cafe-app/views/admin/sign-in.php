@@ -162,6 +162,68 @@ $routes = SignIn::organiserRoutes();
 	<button type="submit">Save sign-in settings</button>
 </form>
 
+<?php if ( $pending ) : ?>
+	<div class="panel">
+		<h3>Waiting to be joined up</h3>
+
+		<p class="muted">
+			Somebody signed in with an outside provider using an address that already
+			belongs to an account here. A confirmed address shows they can read that
+			mailbox now — not that they are the person who opened the account, which is
+			why these are not joined up on their own.
+		</p>
+
+		<p class="muted">
+			<strong>Approve only if you know it is the same person.</strong> Approving
+			hands them that account and everything in it, including any balance.
+			Approving does not sign them in: they go back to the login page and come
+			through the provider again.
+		</p>
+
+		<div class="table-scroll">
+			<table>
+				<thead>
+					<tr>
+						<th>Signed in as</th><th>Provider</th><th>Wants the account of</th>
+						<th>Since</th><th></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php foreach ( $pending as $request ) : ?>
+						<tr>
+							<td>
+								<strong><?= e( '' !== $request['name'] ? $request['name'] : 'No name given' ) ?></strong><br>
+								<span class="muted"><?= e( $request['email'] ) ?></span>
+							</td>
+							<td><?= e( SignIn::label( (string) $request['provider'] ) ) ?></td>
+							<td>
+								<strong><?= e( $request['user_name'] ) ?></strong><br>
+								<span class="muted"><?= e( $request['user_email'] ) ?></span>
+								<?php if ( \PauseCafe\Users::ROLE_ADMIN === (string) $request['role'] ) : ?>
+									<br><span class="pill pill--closed">Organiser account</span>
+								<?php endif; ?>
+							</td>
+							<td class="muted"><?= e( $request['created_at'] ) ?></td>
+							<td>
+								<?php // Two buttons, one form: only the pressed one submits its value. ?>
+								<form method="post" action="/admin/signin/link">
+									<?= Csrf::field() ?>
+									<input type="hidden" name="id" value="<?= (int) $request['id'] ?>">
+									<button type="submit" name="decision" value="approve"
+										onclick="return confirm('Hand <?= e( $request['user_name'] ) ?>\'s account, and anything in it, to whoever signed in as <?= e( $request['email'] ) ?>?')">
+										Approve
+									</button>
+									<button type="submit" class="button button--quiet" name="decision" value="decline">Decline</button>
+								</form>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+		</div>
+	</div>
+<?php endif; ?>
+
 <div class="panel">
 	<h3>Linked accounts</h3>
 

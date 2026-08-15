@@ -11,12 +11,18 @@ use PauseCafe\SignIn\Profile;
  * This is the only place an outside service is allowed to turn into a signed-in
  * person, and the rules it applies are the ones that keep the wallet safe:
  *
- *   - The link is on the provider's subject, not the email. Subjects do not
- *     change; addresses do, and matching on an address would hand a wallet to
- *     whoever inherits the address.
+ *   - Once made, the link is on the provider's subject, not the email. Subjects
+ *     do not change; addresses do, and matching on an address every time would
+ *     hand a wallet to whoever inherits the address.
  *
  *   - An unverified address never matches an existing account. Without this, a
  *     provider that lets anyone claim any address lets anyone claim any wallet.
+ *
+ *   - Making the link in the first place is the weak point, because there is no
+ *     subject to go on yet and only the address is left. Where the account has
+ *     money, a history, or the admin area behind it, the match is parked for an
+ *     organiser instead of acted on. Everything above is worth nothing if the
+ *     first link can be had by whoever holds the address this month.
  *
  *   - Nothing arriving from outside sets role or approval. A first-time signer
  *     lands unapproved, exactly like filling in the sign-up form, and an
@@ -122,6 +128,140 @@ class Identities {
 	}
 
 	/**
+	 * Whether attaching an external account to this one needs a human first.
+	 *
+	 * The question is what somebody would get by arriving with a verified
+	 * address that happens to match: money, a history of orders, or the run of
+	 * the admin area. An account with none of those is not worth taking, and
+	 * making its owner wait for an organiser would cost far more than it saves
+	 * -- the ordinary case is a member whose account an organiser typed in last
+	 * month signing in with Google for the first time.
+	 *
+	 * Role counts as much as money. An organiser account with an empty wallet
+	 * is the most valuable thing on the site.
+	 */
+	public static function needsApproval( int $userId ): bool {
+		$user = Users::find( $userId );
+
+		if ( ! $user ) {
+			return true;
+		}
+
+		if ( Users::ROLE_ADMIN === (string) $user['role'] ) {
+			return true;
+		}
+
+		$pdo = Database::pdo();
+
+		$wallet = $pdo->prepare( 'SELECT COUNT(*) FROM wallet_entries WHERE user_id = ?' );
+		$wallet->execute( array( $userId ) );
+
+		if ( (int) $wallet->fetchColumn() > 0 ) {
+			return true;
+		}
+
+		$orders = $pdo->prepare( 'SELECT COUNT(*) FROM orders WHERE user_id = ?' );
+		$orders->execute( array( $userId ) );
+
+		return (int) $orders->fetchColumn() > 0;
+	}
+
+	/**
+	 * Parks a claim for an organiser to look at, and returns it.
+	 *
+	 * Repeated attempts update the one row rather than piling up, so somebody
+	 * trying again every day is one item on the screen with a recent date on it
+	 * -- and cannot bury the list under a hundred entries.
+	 */
+	public static function requestLink( int $userId, string $provider, string $subject, string $email, string $name = '' ): void {
+		$pdo = Database::pdo();
+		$now = gmdate( 'Y-m-d H:i:s' );
+
+		$statement = $pdo->prepare(
+			'UPDATE identity_link_requests
+			 SET user_id = ?, email = ?, name = ?, last_try_at = ?
+			 WHERE provider = ? AND subject = ?'
+		);
+
+		$statement->execute( array( $userId, $email, $name, $now, $provider, $subject ) );
+
+		if ( $statement->rowCount() > 0 ) {
+			return;
+		}
+
+		$pdo->prepare(
+			'INSERT INTO identity_link_requests
+				(user_id, provider, subject, email, name, created_at, last_try_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)'
+		)->execute( array( $userId, $provider, $subject, $email, $name, $now, $now ) );
+	}
+
+	/**
+	 * Claims waiting on an organiser, with the account each one wants.
+	 *
+	 * @return array[]
+	 */
+	public static function pendingLinks(): array {
+		return Database::pdo()->query(
+			'SELECT r.*, u.name AS user_name, u.email AS user_email, u.role
+			 FROM identity_link_requests r
+			 JOIN users u ON u.id = r.user_id
+			 ORDER BY r.created_at'
+		)->fetchAll();
+	}
+
+	public static function pendingLink( int $id ): ?array {
+		$statement = Database::pdo()->prepare( 'SELECT * FROM identity_link_requests WHERE id = ?' );
+		$statement->execute( array( $id ) );
+
+		return $statement->fetch() ?: null;
+	}
+
+	public static function declineLink( int $id ): void {
+		$statement = Database::pdo()->prepare( 'DELETE FROM identity_link_requests WHERE id = ?' );
+		$statement->execute( array( $id ) );
+	}
+
+	/**
+	 * An organiser says yes: the link is made and the claim is spent.
+	 *
+	 * Approving does not sign anybody in. The person goes back to the login
+	 * page and comes through the provider again, which is the same path as
+	 * every other sign-in and does not depend on the organiser and the member
+	 * being at their screens at the same moment.
+	 *
+	 * @return bool False when the claim has gone, or the account with it.
+	 */
+	public static function approveLink( int $id ): bool {
+		$request = self::pendingLink( $id );
+
+		if ( ! $request || ! Users::find( (int) $request['user_id'] ) ) {
+			self::declineLink( $id );
+
+			return false;
+		}
+
+		// Something linked that subject while the claim sat here. Spend it
+		// rather than writing a second row against the unique index.
+		if ( self::find( (string) $request['provider'], (string) $request['subject'] ) ) {
+			self::declineLink( $id );
+
+			return true;
+		}
+
+		self::link(
+			(int) $request['user_id'],
+			(string) $request['provider'],
+			(string) $request['subject'],
+			(string) $request['email']
+		);
+
+		self::declineLink( $id );
+
+		return true;
+	}
+
+	/**
 	 * Turns a verified external profile into somebody who is signed in.
 	 *
 	 * The profile must already have been checked — a signature verified, a
@@ -163,6 +303,31 @@ class Identities {
 		$user = Users::findByEmail( $profile->email );
 
 		if ( $user ) {
+			/*
+			 * A verified address is good evidence and poor proof.
+			 *
+			 * It says the provider believes this person can read that mailbox
+			 * today. It does not say they are the person who opened the account
+			 * here -- addresses are reassigned inside an organisation, recycled
+			 * by a provider, and issued by tenants somebody else administers.
+			 * Where the account holds money, has a history, or is an
+			 * organiser's, that gap is worth a human closing.
+			 *
+			 * So the claim is parked rather than acted on, and an organiser who
+			 * knows the congregation decides. Accounts with nothing to take
+			 * still link on the spot, because waiting would cost their owners
+			 * far more than it protects.
+			 */
+			if ( self::needsApproval( (int) $user['id'] ) ) {
+				self::requestLink( (int) $user['id'], $provider, $profile->subject, $profile->email, $profile->name );
+
+				return Outcome::failure(
+					'There is already an account here for ' . $profile->email . '. '
+					. 'For safety it is not joined to a new sign-in automatically, so an organiser has been '
+					. 'asked to confirm it is you. Try again once they have, or sign in the way you usually do.'
+				);
+			}
+
 			self::link( (int) $user['id'], $provider, $profile->subject, $profile->email );
 
 			return Outcome::authenticated( $user );
