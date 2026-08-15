@@ -8,6 +8,19 @@ Notable changes to the standalone app. Dates are the day the change landed on
 > Zeffy webhook has never seen a real payment. It stays below 1.0 until both
 > have happened.
 
+## Unreleased
+
+### Security
+
+- **Cancelling an order could refund more than was ever charged.** `cancel()`
+  gave back `total_cents` — what the food is worth — rather than what was still
+  owed. The two are the same number until something has already been refunded,
+  so a $20 order given a $5 goodwill refund and then cancelled paid out $25
+  against a $20 charge. Cancellation now goes through `refundableCents()`, the
+  same cap every other refund path uses, and records the refund in the order's
+  history so `refundedCents()` counts it and the invariant still holds
+  afterwards. Reported by a security audit; found by review, not in the wild.
+
 ## 0.14.0 — 2026-08-14
 
 ### Added

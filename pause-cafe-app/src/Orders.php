@@ -230,23 +230,53 @@ class Orders {
 		self::begin( $pdo );
 
 		try {
-			$statement = $pdo->prepare( "UPDATE orders SET status = 'cancelled' WHERE id = ?" );
-			$statement->execute( array( $orderId ) );
+			/*
+			 * Read again inside the transaction. The check above is there to
+			 * give a decent error without taking a write lock, but it is not
+			 * what makes cancelling safe: BEGIN IMMEDIATE serialises writers, so
+			 * two cancellations arriving together queue here and the second sees
+			 * what the first did rather than the state both started from.
+			 */
+			$order = self::find( $orderId );
+
+			if ( ! $order || 'cancelled' === $order['status'] ) {
+				throw new \RuntimeException( 'That order is already cancelled.' );
+			}
 
 			/*
-			 * Giving the money back is the method's business. A wallet order gets
-			 * a ledger entry; a cash order that was never collected has nothing to
-			 * return, and one that was is settled in person.
+			 * What is left to give back, never what the food is worth.
+			 *
+			 * These are not the same number the moment anything has already been
+			 * refunded. A $20 order given a $5 goodwill refund has had a quarter
+			 * of its money returned; refunding total_cents on top of that hands
+			 * back $25 against a $20 charge. refundableCents() is the one place
+			 * that subtraction is done, and every path that gives money back has
+			 * to go through it.
 			 */
-			$method = Payments::get( (string) $order['payment_method'] );
+			$refundCents = self::refundableCents( $orderId );
 
-			if ( $method ) {
-				$method->refund(
-					(int) $order['user_id'],
-					$orderId,
-					(int) $order['total_cents'],
-					$byUserId
-				);
+			$pdo->prepare( "UPDATE orders SET status = 'cancelled' WHERE id = ?" )
+				->execute( array( $orderId ) );
+
+			if ( $refundCents > 0 ) {
+				/*
+				 * Recorded as well as moved. Without the record, refundedCents()
+				 * would not count the cancellation and refundableCents() would
+				 * still claim the whole charge was available afterwards -- the
+				 * same hole one step further along.
+				 */
+				self::record( $orderId, -$refundCents, 'Order cancelled', $byUserId );
+
+				/*
+				 * Giving the money back is the method's business. A wallet order
+				 * gets a ledger entry; a cash order that was never collected has
+				 * nothing to return, and one that was is settled in person.
+				 */
+				$method = Payments::get( (string) $order['payment_method'] );
+
+				if ( $method ) {
+					$method->refund( (int) $order['user_id'], $orderId, $refundCents, $byUserId );
+				}
 			}
 
 			self::commit( $pdo );
@@ -339,16 +369,8 @@ class Orders {
 			);
 		}
 
-		$pdo = Database::pdo();
-
-		$statement = $pdo->prepare(
-			'INSERT INTO order_adjustments (order_id, delta_cents, reason, by_user_id, created_at)
-			 VALUES (?, ?, ?, ?, ?)'
-		);
-
-		$statement->execute(
-			array( $orderId, $deltaCents, $reason, $byUserId, gmdate( 'Y-m-d H:i:s' ) )
-		);
+		$pdo        = Database::pdo();
+		$adjustment = self::record( $orderId, $deltaCents, $reason, $byUserId );
 
 		// Taking more raises what this order has collected; giving back does
 		// not lower it, because it is a record of money in, and the refunds are
@@ -368,10 +390,33 @@ class Orders {
 				$reason,
 				// The row id makes it unique, so repeated movements never
 				// collide on the wallet's idempotency index.
-				'adjust:' . $orderId . ':' . $pdo->lastInsertId(),
+				'adjust:' . $orderId . ':' . $adjustment,
 				$byUserId
 			);
 		}
+	}
+
+	/**
+	 * Writes one movement into the order's history and returns its row id.
+	 *
+	 * Split out because cancellation records a refund too, and refundedCents()
+	 * reads this table: a money movement that skipped it would be invisible to
+	 * the very calculation that caps the next one. Callers are inside a
+	 * transaction, and moving the money is theirs to do.
+	 */
+	private static function record( int $orderId, int $deltaCents, string $reason, ?int $byUserId ): int {
+		$pdo = Database::pdo();
+
+		$statement = $pdo->prepare(
+			'INSERT INTO order_adjustments (order_id, delta_cents, reason, by_user_id, created_at)
+			 VALUES (?, ?, ?, ?, ?)'
+		);
+
+		$statement->execute(
+			array( $orderId, $deltaCents, $reason, $byUserId, gmdate( 'Y-m-d H:i:s' ) )
+		);
+
+		return (int) $pdo->lastInsertId();
 	}
 
 	/**
