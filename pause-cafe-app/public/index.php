@@ -474,27 +474,64 @@ $router->post(
  * Cart and checkout
  * ---------------------------------------------------------------------- */
 
+/*
+ * The side cart.
+ *
+ * Every cart route still answers a plain form post with a redirect, exactly as
+ * it did before. When the script is running it sends the same post with an
+ * XMLHttpRequest header instead, and gets the drawer's markup back rather than
+ * a new page -- so a parent adding a fourth child's lunch never loses their
+ * place on the menu. The two paths share the route, the validation and the
+ * template; the only thing that differs is how the answer is delivered.
+ */
+$wantsJson = static function (): bool {
+	return 0 === strcasecmp( 'xmlhttprequest', (string) ( $_SERVER['HTTP_X_REQUESTED_WITH'] ?? '' ) );
+};
+
+$cartJson = static function ( string $error = '' ): never {
+	header( 'Content-Type: application/json; charset=utf-8' );
+
+	echo (string) json_encode(
+		array(
+			'ok'    => '' === $error,
+			'error' => $error,
+			'count' => Cart::count(),
+			'html'  => View::render( 'partials/cart-drawer', array( 'cart' => Cart::detailed() ), '' ),
+		)
+	);
+
+	exit;
+};
+
 $router->post(
 	'/cart/add',
-	static function () use ( $requireLogin, $post ): void {
+	static function () use ( $requireLogin, $post, $wantsJson, $cartJson ): void {
 		$requireLogin();
 		Csrf::verify();
+
+		// One refusal path for both kinds of request, so a rule can never apply
+		// to the page but not to the drawer.
+		$refuse = static function ( string $message ) use ( $wantsJson, $cartJson ): never {
+			if ( $wantsJson() ) {
+				$cartJson( $message );
+			}
+
+			View::flash( 'error', $message );
+			View::redirect( '/' );
+		};
 
 		$item = Menu::item( (int) ( $_POST['item_id'] ?? 0 ) );
 
 		if ( ! $item ) {
-			View::flash( 'error', 'That dish is not on the menu.' );
-			View::redirect( '/' );
+			$refuse( 'That dish is not on the menu.' );
 		}
 
 		if ( ! $item['window']->isOrderable() ) {
-			View::flash( 'error', $item['name'] . ' cannot be ordered right now. ' . $item['window']->message() );
-			View::redirect( '/' );
+			$refuse( $item['name'] . ' cannot be ordered right now. ' . $item['window']->message() );
 		}
 
 		if ( Menu::isSoldOut( $item ) ) {
-			View::flash( 'error', $item['name'] . ' is sold out.' );
-			View::redirect( '/' );
+			$refuse( $item['name'] . ' is sold out.' );
 		}
 
 		/*
@@ -506,11 +543,14 @@ $router->post(
 		$missing = MenuFields::missingRequired( $item, $values );
 
 		if ( $missing ) {
-			View::flash( 'error', 'Please fill in: ' . implode( ', ', $missing ) . '.' );
-			View::redirect( '/' );
+			$refuse( 'Please fill in: ' . implode( ', ', $missing ) . '.' );
 		}
 
 		Cart::add( (int) $item['id'], max( 1, (int) ( $_POST['qty'] ?? 1 ) ), $values );
+
+		if ( $wantsJson() ) {
+			$cartJson();
+		}
 
 		$who = (string) ( $values[ MenuFields::PERSON ] ?? '' );
 
@@ -590,11 +630,42 @@ $router->post(
 
 $router->post(
 	'/cart/remove',
-	static function () use ( $requireLogin ): void {
+	static function () use ( $requireLogin, $wantsJson, $cartJson ): void {
 		$requireLogin();
 		Csrf::verify();
 
 		Cart::remove( (int) ( $_POST['index'] ?? -1 ) );
+
+		if ( $wantsJson() ) {
+			$cartJson();
+		}
+
+		View::redirect( '/cart' );
+	}
+);
+
+$router->post(
+	'/cart/split',
+	static function () use ( $requireLogin, $wantsJson, $cartJson, $applyCartLines ): void {
+		$requireLogin();
+		Csrf::verify();
+
+		/*
+		 * The cart page posts every line with whichever button was pressed, so
+		 * anything typed since the last save is applied before the split. The
+		 * drawer sends only the index, and this does nothing there.
+		 */
+		$applyCartLines();
+
+		$into = Cart::split( (int) ( $_POST['index'] ?? -1 ) );
+
+		if ( $wantsJson() ) {
+			$cartJson();
+		}
+
+		if ( $into > 1 ) {
+			View::flash( 'success', 'Split into ' . $into . ' meals. Give each one a name below.' );
+		}
 
 		View::redirect( '/cart' );
 	}

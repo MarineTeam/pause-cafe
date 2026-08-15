@@ -57,7 +57,12 @@ $themeCss  = Themes::stylesheetUrl();
 				<?php if ( Auth::isAdmin() ) : ?>
 					<a href="/admin">Organiser</a>
 				<?php endif; ?>
-				<a href="/cart" class="cart-link">Cart<?= $cartCount ? ' (' . (int) $cartCount . ')' : '' ?></a>
+				<?php
+				// The count is in its own element so the script can rewrite it
+				// after an add without touching the link around it.
+				?>
+				<a href="/cart" class="cart-link" data-cart-link>Cart<span
+					data-cart-count><?= $cartCount ? ' (' . (int) $cartCount . ')' : '' ?></span></a>
 				<form method="post" action="/logout" class="inline">
 					<?= \PauseCafe\Csrf::field() ?>
 					<button type="submit" class="link-button">Sign out</button>
@@ -104,6 +109,32 @@ $adminStyle = $adminNav ? \PauseCafe\AdminNav::style() : '';
 		<p><?= e( Settings::get( 'menu_note' ) ) ?></p>
 	</div>
 </footer>
+
+<?php if ( $user && Auth::canOrder() ) : ?>
+	<?php
+	/*
+	 * The side cart.
+	 *
+	 * Rendered on every page, and off-screen until the script opens it -- which
+	 * is deliberate. Without JavaScript nothing here can be reached, and nothing
+	 * here needs to be: Add still posts and redirects to the full cart page,
+	 * which is the flow the site has always had. So this is an addition for
+	 * people whose browsers can use it, not a replacement anybody depends on.
+	 *
+	 * $cart is set here rather than passed in because the layout runs for every
+	 * screen, and threading it through every route would mean a route that
+	 * forgot silently lost the drawer.
+	 */
+	$cart = Cart::detailed();
+	?>
+	<div class="side-cart__scrim" data-cart-close hidden></div>
+
+	<aside id="side-cart" class="side-cart" aria-label="Your cart" aria-hidden="true">
+		<?php include View::locate( 'partials/cart-drawer' ); ?>
+	</aside>
+
+	<script src="/assets/cart.js?v=<?= e( PAUSE_CAFE_VERSION ) ?>" defer></script>
+<?php endif; ?>
 
 </body>
 </html>

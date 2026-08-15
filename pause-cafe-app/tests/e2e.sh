@@ -1001,6 +1001,51 @@ curl -s -o /dev/null -b $M -c $M -X POST "$BASE/cart/add" \
 has "a one-off can be put in the cart" "$(curl -s -b $M -c $M "$BASE/cart")" "Box of chocolates"
 
 echo ""
+echo "The side cart"
+# Only the delivery differs between the two paths, so both are checked against
+# the same route. A plain post still redirects to the cart page, which is the
+# whole no-JavaScript guarantee.
+PLAIN=$(curl -s -o /dev/null -w '%{http_code}' -b $M -c $M -X POST "$BASE/cart/add" \
+  -d "_token=$(tok $M /)" -d "item_id=$ONEOFF_ID" -d "person_name=Child A" -d "qty=1")
+want "a plain add still redirects" "$PLAIN" "302"
+
+# The same post, announced as a background request, comes back as the drawer.
+AJAX=$(curl -s -b $M -c $M -H "X-Requested-With: XMLHttpRequest" -X POST "$BASE/cart/add" \
+  -d "_token=$(tok $M /)" -d "item_id=$ONEOFF_ID" -d "person_name=Child B" -d "qty=1")
+has "an add from the drawer answers in JSON" "$AJAX" '"ok":true'
+has "carrying the markup to show" "$AJAX" 'side-cart__lines'
+has "with both names on it" "$AJAX" "Child A"
+has "including the one just added" "$AJAX" "Child B"
+
+# A refusal has to reach the drawer too, or it would silently do nothing.
+NOPE=$(curl -s -b $M -c $M -H "X-Requested-With: XMLHttpRequest" -X POST "$BASE/cart/add" \
+  -d "_token=$(tok $M /)" -d "item_id=999999" -d "qty=1")
+has "a refusal comes back as one" "$NOPE" '"ok":false'
+has "saying why" "$NOPE" "not on the menu"
+
+# Two of a dish is usually two children, and one line can hold only one name.
+TWO=$(curl -s -b $M -c $M -H "X-Requested-With: XMLHttpRequest" -X POST "$BASE/cart/add" \
+  -d "_token=$(tok $M /)" -d "item_id=$ONEOFF_ID" -d "person_name=Twins" -d "qty=2")
+has "a quantity of two offers to be split" "$TWO" "Name each one separately"
+
+# The cart at this point: the one-off, Child A, Child B, then Twins at two.
+SPLIT=$(curl -s -b $M -c $M -H "X-Requested-With: XMLHttpRequest" -X POST "$BASE/cart/split" \
+  -d "_token=$(tok $M /)" -d "index=3")
+hasnt "and after splitting it does not" "$SPLIT" "Name each one separately"
+want "the pair became a line each" \
+  "$(printf '%s' "$SPLIT" | grep -o 'side-cart__line-main' | wc -l | tr -d ' ')" "5"
+
+# The drawer is only rendered for somebody who could use it.
+has "a member's page carries the drawer" "$(curl -s -b $M -c $M "$BASE/")" 'id="side-cart"'
+hasnt "a signed-out visitor's does not" "$(curl -s "$BASE/")" 'id="side-cart"'
+
+# Left as it was found, so nothing downstream inherits a full cart.
+for i in 4 3 2 1 0; do
+  curl -s -o /dev/null -b $M -c $M -X POST "$BASE/cart/remove" -d "_token=$(tok $M /cart)" -d "index=$i"
+done
+want "and it can be emptied again" "$(curl -s -b $M -c $M "$BASE/cart" | grep -c 'Nothing in the cart yet')" "1"
+
+echo ""
 echo "Access control"
 want "a member cannot reach the admin area" "$(code $M /admin)" "403"
 want "a signed-out visitor is redirected from the cart" "$(code /dev/null /cart)" "302"

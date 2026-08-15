@@ -560,6 +560,121 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 /* A cancelled order is still readable, just plainly not live. */
 .is-cancelled td { opacity: 0.6; }
 
+/* The side cart -----------------------------------------------------------
+ *
+ * Closed is the resting state and it is expressed with visibility, not just a
+ * transform: an off-screen drawer that is still visible is still in the tab
+ * order, so a keyboard user would tab away from the page into a panel they
+ * cannot see. Since only the script ever opens it, a browser without the
+ * script simply never meets it.
+ */
+.side-cart {
+	position: fixed;
+	z-index: 30;
+	top: 0;
+	bottom: 0;
+	right: 0;
+	width: 360px;
+	max-width: 88vw;
+	display: flex;
+	flex-direction: column;
+	padding: 18px 18px 22px;
+	overflow-y: auto;
+	background: var(--page-bg);
+	border-left: 1px solid var(--line);
+	box-shadow: -12px 0 32px rgba(0, 0, 0, 0.12);
+	visibility: hidden;
+	transform: translateX(102%);
+	transition: transform 0.18s ease-out, visibility 0s linear 0.18s;
+}
+
+.side-cart--open {
+	visibility: visible;
+	transform: translateX(0);
+	transition: transform 0.18s ease-out, visibility 0s;
+}
+
+.side-cart__scrim {
+	position: fixed;
+	inset: 0;
+	z-index: 29;
+	background: rgba(0, 0, 0, 0.4);
+}
+
+.side-cart__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 14px;
+}
+
+.side-cart__title { margin: 0; font-size: 20px; }
+
+/*
+ * Sized for a thumb. This drawer is mostly a phone control -- it is the parent
+ * standing in the hall on Saturday morning adding a third child -- and the
+ * 34x32 box these came out at is not something you hit first time.
+ */
+.side-cart__close {
+	min-width: 44px;
+	min-height: 44px;
+	margin: -8px -8px 0 0;
+	padding: 0 10px;
+	border: 0;
+	background: none;
+	color: var(--ink-soft);
+	font-size: 24px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.side-cart__line .link-button {
+	min-height: 44px;
+	padding: 4px 0;
+}
+
+.side-cart__empty,
+.side-cart__for { margin: 0 0 14px; font-size: 14px; }
+
+.side-cart__lines { list-style: none; margin: 0; padding: 0; }
+
+.side-cart__line {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 12px;
+	padding: 12px 0;
+	border-bottom: 1px solid var(--line);
+}
+
+.side-cart__line-main { flex: 1 1 60%; min-width: 0; }
+.side-cart__line-side { flex: 0 0 auto; text-align: right; }
+
+/* The name gets its own line: it is what the drawer exists to show. */
+.side-cart__who { display: block; margin-top: 2px; font-size: 14px; }
+
+.side-cart__price { display: block; font-variant-numeric: tabular-nums; }
+.side-cart__split { flex: 1 1 100%; font-size: 13px; }
+
+.side-cart__foot { margin-top: auto; padding-top: 16px; }
+
+.side-cart__total {
+	display: flex;
+	justify-content: space-between;
+	margin: 0 0 14px;
+	font-size: 17px;
+}
+
+.side-cart__checkout { width: 100%; text-align: center; }
+.side-cart__more { width: 100%; margin-top: 8px; text-align: center; }
+
+/* Stops the page scrolling behind an open drawer on a phone. */
+body.side-cart-open { overflow: hidden; }
+
+@media (max-width: 420px) {
+	.side-cart { width: 100%; max-width: 100%; }
+}
+
 /* Jump links ------------------------------------------------------------- */
 
 .jump {
