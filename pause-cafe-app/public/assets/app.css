@@ -486,22 +486,75 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 
 .admin-nav--side .admin-nav__flip { padding-left: 10px; }
 
-/* A sidebar on a phone is just a long list to scroll past, so it folds back
-   into the top arrangement at the width where the columns stop fitting. */
+/*
+ * The drawer, on phones only.
+ *
+ * The checkbox is the whole mechanism: hidden, but its :checked state slides
+ * the menu in and reveals the scrim. No script, and the label is focusable, so
+ * the keyboard works without anything extra.
+ *
+ * All of it is switched off above the breakpoint, where the menu is simply
+ * always on the side.
+ */
+.admin-drawer__toggle,
+.admin-drawer__open,
+.admin-drawer__scrim,
+.admin-drawer__close { display: none; }
+
 @media (max-width: 760px) {
 	.wrap--admin-side { display: block; }
 
-	.admin-nav--side {
-		position: static;
-		border-bottom: 1px solid var(--line);
-		margin-bottom: 24px;
-		padding-bottom: 12px;
+	.admin-drawer__open {
+		display: inline-block;
+		margin-bottom: 20px;
+		padding: 9px 14px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		background: var(--card-bg);
+		font-size: 15px;
+		cursor: pointer;
 	}
 
-	.admin-nav--side .admin-nav__list { flex-direction: row; flex-wrap: wrap; gap: 14px; }
-	.admin-nav--side a { padding: 0; border-left: 0; background: none; }
-	.admin-nav--side a.is-active { text-decoration: underline; background: none; }
-	.admin-nav--side .admin-nav__flip { padding-left: 0; margin-top: 10px; }
+	.admin-nav--side {
+		display: block;
+		position: fixed;
+		z-index: 20;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		width: 240px;
+		max-width: 84vw;
+		padding: 20px 16px;
+		overflow-y: auto;
+		background: var(--page-bg);
+		border-right: 1px solid var(--line);
+		/* Off screen until asked for, and it animates rather than jumping. */
+		transform: translateX(-102%);
+		transition: transform 0.18s ease-out;
+	}
+
+	.admin-drawer__toggle:checked ~ .admin-nav--side { transform: translateX(0); }
+
+	.admin-drawer__toggle:checked ~ .admin-drawer__scrim {
+		display: block;
+		position: fixed;
+		inset: 0;
+		z-index: 19;
+		background: rgba(0, 0, 0, 0.4);
+	}
+
+	.admin-drawer__close {
+		display: block;
+		margin-bottom: 14px;
+		font-size: 14px;
+		color: var(--ink-soft);
+		cursor: pointer;
+		text-align: right;
+	}
+
+	/* Comfortable to hit with a thumb, which the 24px rows were not. */
+	.admin-nav--side .admin-nav__list { flex-direction: column; gap: 2px; }
+	.admin-nav--side a { padding: 11px 10px; }
 }
 
 /* A cancelled order is still readable, just plainly not live. */

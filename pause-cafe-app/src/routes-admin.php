@@ -277,6 +277,7 @@ $router->get(
 				'title'     => 'Add a dish',
 				'item'      => null,
 				'locations' => Menu::locations(),
+				'schedules' => Schedules::all(),
 				'mode'      => Schedule::activeMode(),
 				'affected'  => 0,
 			)
@@ -427,6 +428,7 @@ $router->get(
 				'title'     => 'Edit ' . $item['name'],
 				'item'      => $item,
 				'locations' => Menu::locations(),
+				'schedules' => Schedules::all(),
 				'mode'      => Schedule::activeMode(),
 				'affected'  => count( MenuChanges::affected( (int) $item['id'] ) ),
 			)
@@ -460,7 +462,15 @@ $router->post(
 			'status'       => $post( 'status', 'published' ),
 			'opened_at'    => '',
 			'field_rules'  => MenuFields::rulesFromPost( $_POST ),
+			'schedule_id'  => (int) ( $_POST['schedule_id'] ?? Schedules::DEFAULT_ID ),
+			'standalone'   => isset( $_POST['standalone'] ) ? 1 : 0,
 		);
+
+		// A schedule deleted between opening the form and saving it would
+		// otherwise leave the dish pointing at rules that no longer exist.
+		if ( ! Schedules::exists( $data['schedule_id'] ) ) {
+			$data['schedule_id'] = Schedules::DEFAULT_ID;
+		}
 
 		$existing = $id ? Menu::item( $id ) : null;
 

@@ -67,10 +67,16 @@ class Schedule {
 			return $parsed;
 		}
 
-		// datetime-local inputs post without seconds.
-		$parsed = DateTimeImmutable::createFromFormat( 'Y-m-d\TH:i', $value, self::timezone() );
+		// datetime-local inputs post without seconds, with either separator.
+		foreach ( array( 'Y-m-d\TH:i', 'Y-m-d H:i', 'Y-m-d\TH:i:s' ) as $format ) {
+			$parsed = DateTimeImmutable::createFromFormat( $format, $value, self::timezone() );
 
-		return $parsed ? $parsed->setTime( (int) $parsed->format( 'H' ), (int) $parsed->format( 'i' ), 0 ) : null;
+			if ( $parsed ) {
+				return $parsed->setTime( (int) $parsed->format( 'H' ), (int) $parsed->format( 'i' ), (int) $parsed->format( 's' ) );
+			}
+		}
+
+		return null;
 	}
 
 	public static function parseDate( string $value ): ?DateTimeImmutable {

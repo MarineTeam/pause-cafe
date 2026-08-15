@@ -92,6 +92,43 @@ $toInput = static function ( string $stored ): string {
 		</div>
 	</div>
 
+	<div class="panel">
+		<h3>When it is served</h3>
+
+		<div class="field-row">
+			<div>
+				<label for="schedule_id">Schedule</label>
+				<select id="schedule_id" name="schedule_id">
+					<?php foreach ( $schedules as $scheduleId => $rules ) : ?>
+						<option value="<?= (int) $scheduleId ?>"
+							<?= (int) $scheduleId === (int) $value( 'schedule_id', (string) \PauseCafe\Schedules::DEFAULT_ID ) ? 'selected' : '' ?>>
+							<?= e( $rules['name'] ) ?>
+						</option>
+					<?php endforeach; ?>
+				</select>
+				<p class="help">
+					Which rhythm this dish follows. Without this field every dish added
+					here landed on the default schedule, so the only way to give one its
+					own timing was to change the schedule everything else uses.
+				</p>
+			</div>
+
+			<div>
+				<label style="font-weight:400; margin-top:26px; display:block">
+					<input type="checkbox" name="standalone" value="1"
+						<?= '' !== $value( 'standalone' ) && '0' !== $value( 'standalone' ) ? 'checked' : '' ?>>
+					Show whenever it can be ordered
+				</label>
+				<p class="help">
+					For a one-off — a Christmas menu, a box of chocolates, something with
+					two weeks' notice. It ignores the weekly rhythm entirely, appears in
+					its own section while the dates below allow it, and cannot affect any
+					other menu. Set the from and until dates yourself.
+				</p>
+			</div>
+		</div>
+	</div>
+
 	<?php if ( Schedule::MODE_PLANNED === $mode ) : ?>
 		<div class="panel">
 			<h3>Planned schedule</h3>

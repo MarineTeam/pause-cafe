@@ -1096,8 +1096,10 @@ MenuBuilder::save(
 
 $stew = Menu::itemBySlot( '2026-11-29', $marine );
 
-check( 'the from is stored', $stew['open_from'], '2026-11-24T09:00' );
-check( 'the until is stored', $stew['close_at'], '2026-11-28T17:00' );
+// Posted as a datetime-local value, stored canonically: Menu::save normalises
+// so the resolver has exactly one format to read.
+check( 'the from is stored', $stew['open_from'], '2026-11-24 09:00:00' );
+check( 'the until is stored', $stew['close_at'], '2026-11-28 17:00:00' );
 check( 'and it resolves as a manual window', $stew['window']->source, Schedule::MODE_MANUAL );
 check( 'open inside it', $stew['window']->isOrderable( new DateTimeImmutable( '2026-11-26 12:00', Schedule::timezone() ) ), true );
 check( 'shut before it', $stew['window']->isOrderable( new DateTimeImmutable( '2026-11-23 12:00', Schedule::timezone() ) ), false );

@@ -15,7 +15,30 @@ $navCurrent = AdminNav::currentFor( $_SERVER['REQUEST_URI'] ?? '/admin' );
 $navOther   = AdminNav::SIDE === $navStyle ? AdminNav::TOP : AdminNav::SIDE;
 ?>
 
+<?php
+/*
+ * On a phone the side arrangement becomes a drawer rather than folding into a
+ * row across the top -- folding it there contradicts the setting, and ten links
+ * wrapped over three rows pushed the actual page down by a third of the screen.
+ *
+ * A checkbox and a label do the opening, so it works with no JavaScript and the
+ * keyboard gets it for free. Both are hidden entirely on wider screens, where
+ * the menu is simply always there.
+ */
+?>
+<?php if ( AdminNav::SIDE === $navStyle ) : ?>
+	<input type="checkbox" id="admin-drawer" class="admin-drawer__toggle no-print">
+	<label for="admin-drawer" class="admin-drawer__open no-print">
+		<span aria-hidden="true">☰</span> Organiser menu
+	</label>
+	<label for="admin-drawer" class="admin-drawer__scrim no-print"></label>
+<?php endif; ?>
+
 <nav class="admin-nav admin-nav--<?= e( $navStyle ) ?> no-print" aria-label="Organiser">
+	<?php if ( AdminNav::SIDE === $navStyle ) : ?>
+		<label for="admin-drawer" class="admin-drawer__close">Close</label>
+	<?php endif; ?>
+
 	<ul class="admin-nav__list">
 		<?php foreach ( AdminNav::items() as $href => $label ) : ?>
 			<li>
