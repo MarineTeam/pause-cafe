@@ -77,8 +77,14 @@ class Auth {
 		if ( $id ) {
 			self::$user = Users::find( $id );
 
-			// The account was deleted while the session was still alive.
-			if ( ! self::$user ) {
+			/*
+			 * The account went away while the session was still alive -- either
+			 * removed, or closed by an organiser. Closing has to take effect on
+			 * the next request rather than whenever they next sign in, or an
+			 * account closed at eleven is still ordering lunch at noon.
+			 */
+			if ( ! self::$user || Users::isDisabled( self::$user ) ) {
+				self::$user = null;
 				unset( $_SESSION['user_id'] );
 			}
 		}

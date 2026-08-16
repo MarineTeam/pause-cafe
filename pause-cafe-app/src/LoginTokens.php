@@ -86,7 +86,8 @@ class LoginTokens {
 
 		$user = Users::find( (int) $row['user_id'] );
 
-		if ( ! $user ) {
+		// A link already in an inbox must not outlive the account it was for.
+		if ( ! $user || Users::isDisabled( $user ) ) {
 			return null;
 		}
 

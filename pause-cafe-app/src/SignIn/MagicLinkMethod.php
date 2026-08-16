@@ -93,7 +93,12 @@ class MagicLinkMethod implements Method {
 
 		$user = Users::findByEmail( $email );
 
-		if ( ! $user ) {
+		/*
+		 * A closed account is treated exactly like an address with no account:
+		 * the same reply, and no email sent. Saying anything else would turn
+		 * this box into a way of asking which accounts have been closed.
+		 */
+		if ( ! $user || Users::isDisabled( $user ) ) {
 			return $said;
 		}
 

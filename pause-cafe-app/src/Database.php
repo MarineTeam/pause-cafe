@@ -294,6 +294,20 @@ class Database {
 		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_identity_user ON user_identities (user_id)' );
 
 		/*
+		 * When somebody stopped being able to sign in, blank while they still
+		 * can.
+		 *
+		 * A date rather than a flag because "since when" is the question asked
+		 * of a closed account months later, and a flag cannot answer it.
+		 *
+		 * This exists because deleting the row does not just remove a person: it
+		 * cascades through wallet_entries and orders and takes the money with
+		 * them. What was collected through Zeffy, what was refunded, what is
+		 * still owed -- all of it gone, with nothing left to reconcile against.
+		 */
+		self::addColumnIfMissing( 'users', 'disabled_at', "TEXT NOT NULL DEFAULT ''" );
+
+		/*
 		 * External sign-ins waiting for an organiser to say they are the same
 		 * person as an account that already exists here.
 		 *

@@ -383,11 +383,13 @@ class Identities {
 		if ( $existing ) {
 			$user = Users::find( (int) $existing['user_id'] );
 
-			// The account was deleted but the link outlived it.
-			if ( ! $user ) {
+			// The account was removed, or closed, but the link outlived it.
+			// Either way the link is spent -- a closed account that a provider
+			// can still open is not closed.
+			if ( ! $user || Users::isDisabled( $user ) ) {
 				self::unlink( (int) $existing['id'] );
 
-				return Outcome::failure( 'That account has been removed. Please speak to an organiser.' );
+				return Outcome::failure( 'That account is no longer active. Please speak to an organiser.' );
 			}
 
 			self::touch( (int) $existing['id'], $profile->email );
