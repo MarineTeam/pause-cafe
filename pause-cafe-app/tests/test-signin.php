@@ -49,6 +49,13 @@ Settings::set( 'mail_transport', 'log' );
 // A fixed clock, so "expired" means something specific.
 Schedule::freeze( new DateTimeImmutable( '2026-08-13 09:00:00', new DateTimeZone( 'UTC' ) ) );
 
+/*
+ * A pinned address, as a properly set-up install has. Sign-in links and
+ * providers both refuse to run without one, so everything below assumes it --
+ * and the last section here takes it away again to prove the refusal.
+ */
+Notifications::configure( 'https://lunch.example', true );
+
 /* =========================================================================
  * Identity tokens
  * ====================================================================== */
@@ -818,6 +825,61 @@ $_SERVER['HTTPS'] = 'off';
 check( 'and "off" is not mistaken for yes', Notifications::baseUrl(), 'http://lunch.example.org' );
 
 unset( $_SERVER['HTTPS'] );
+
+echo "\nAnd an unpinned address is refused, not worked around\n";
+
+/*
+ * Knowing the address can be chosen by the caller is only worth anything if
+ * something acts on it. It used to be a warning on the settings screen while
+ * the links went out regardless, which is not a control -- so the two methods
+ * that put an address in front of somebody refuse to run at all.
+ *
+ * The attack it closes: ask for a sign-in link for another member's address
+ * while claiming to be your own host. The email lands in their inbox carrying a
+ * working one-time token pointing at yours.
+ */
+Settings::setMany(
+	array(
+		'mail_enabled'         => 'yes',
+		'signin_magic_enabled' => 'yes',
+		'signin_auth0_enabled' => 'yes',
+	)
+);
+
+Notifications::configure( '', false );
+
+check( 'unpinned, sign-in links are not offered', SignIn::isAvailable( 'magic' ), false );
+check( 'and the reason names the setting', str_contains( SignIn::get( 'magic' )->requirement(), 'site_url' ), true );
+check( 'nor is a provider', SignIn::isAvailable( 'auth0' ), false );
+check( 'for the same reason', str_contains( SignIn::get( 'auth0' )->requirement(), 'site_url' ), true );
+
+// Asking for a link while claiming to be somewhere else sends nothing at all.
+$_SERVER['HTTP_HOST'] = 'attacker.example';
+
+$mailBefore = is_file( $logPath ) ? file_get_contents( $logPath ) : '';
+
+$forged = SignIn::get( 'magic' )->start( array( 'email' => 'ruth@example.org' ) );
+
+$mailAfter = is_file( $logPath ) ? file_get_contents( $logPath ) : '';
+
+check( 'a forged host gets no link', $mailBefore, $mailAfter );
+check( 'and nothing leaks in the reply', str_contains( $forged->message(), 'attacker.example' ), false );
+
+// Nothing anywhere in the mail log has ever pointed at them.
+check(
+	'no email ever carried that host',
+	str_contains( is_file( $logPath ) ? (string) file_get_contents( $logPath ) : '', 'attacker.example' ),
+	false
+);
+
+$_SERVER['HTTP_HOST'] = 'lunch.example.org';
+
+// Pinned again, and they come back -- the refusal is about the setting, not
+// about the methods being broken.
+Notifications::configure( 'https://lunch.example', true );
+
+check( 'pinned, sign-in links work again', SignIn::isAvailable( 'magic' ), true );
+check( 'and so does the provider', SignIn::isAvailable( 'auth0' ), true );
 
 /* =========================================================================
  * An address is not enough to inherit an account worth taking

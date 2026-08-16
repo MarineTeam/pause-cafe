@@ -154,9 +154,21 @@ whoever has not moved yet.
 | Method | What it is | Setup |
 | --- | --- | --- |
 | **Password** | An address and a password kept here. What the site has always done. | None |
-| **Email a sign-in link** | They type their address, we email a link that signs them in once. No password to forget. | Email has to be working |
-| **Auth0** | They sign in at your Auth0 tenant and come back. | Domain, client ID, client secret |
-| **Supabase** | They sign in through a Supabase project, which brokers Google, GitHub and the rest. | Project URL, anon key, provider |
+| **Email a sign-in link** | They type their address, we email a link that signs them in once. No password to forget. | Email working, and `site_url` |
+| **Auth0** | They sign in at your Auth0 tenant and come back. | Domain, client ID, client secret, and `site_url` |
+| **Supabase** | They sign in through a Supabase project, which brokers Google, GitHub and the rest. | Project URL, anon key, provider, and `site_url` |
+
+**Everything except passwords needs `site_url` set in `config.php`, and refuses
+to run without it.** Both put an address in front of somebody — one in an email,
+one handed to a provider — and with `site_url` blank that address comes from the
+request's `Host` header, which the caller chooses. Ask for a sign-in link for
+somebody else's address while claiming to be your own host, and the email that
+lands in their inbox carries a working one-time token pointing at yours.
+
+This used to be a warning on the settings screen while the links went out
+anyway. A warning is not a control. The Signing in screen still explains it, but
+the methods are held back until it is set — passwords are unaffected, so a site
+works before then; it just cannot hand anybody a link.
 
 **Signing in is not permission to order.** Whichever method somebody uses, a
 first-time signer lands unapproved and an organiser still has to let them in
@@ -658,7 +670,7 @@ kitchen report with print and CSV.
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php          #  51 assertions
 php -d extension=php_pdo_sqlite tests/test-app.php               # 352 assertions
-php -d extension=php_pdo_sqlite tests/test-signin.php            # 180 assertions
+php -d extension=php_pdo_sqlite tests/test-signin.php            # 189 assertions
 php -d extension=php_pdo_sqlite tests/test-design.php            #  67 assertions
 php -d extension=php_pdo_sqlite tests/test-orders-admin.php      #  28 assertions
 php -d extension=php_pdo_sqlite tests/test-order-edits.php       #  76 assertions
@@ -666,7 +678,7 @@ php -d extension=php_pdo_sqlite tests/test-menu-flexibility.php  #  18 assertion
 php -d extension=php_pdo_sqlite tests/test-deletion.php          #  61 assertions
 ```
 
-All of them run against a throwaway database and need no server. 833 in total.
+All of them run against a throwaway database and need no server. 842 in total.
 
 The HTTP layer — sessions, CSRF, approval gating, checkout, the side cart,
 access control — has its own end-to-end run against a live server:

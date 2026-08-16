@@ -127,6 +127,18 @@ abstract class OidcMethod implements Method, Linkable {
 			return false;
 		}
 
+		/*
+		 * The redirect URI is built from the same base as everything else, and
+		 * without a pinned site_url that base is the Host header. A callback
+		 * address that changes with whatever the browser claimed is not one you
+		 * can register with a provider, so this is broken in practice before it
+		 * is anything else -- and where a provider has been set up to accept a
+		 * wildcard, it is worse than broken.
+		 */
+		if ( ! Notifications::urlIsPinned() ) {
+			return false;
+		}
+
 		return '' !== $this->clientId() && '' !== $this->clientSecret();
 	}
 
@@ -137,6 +149,12 @@ abstract class OidcMethod implements Method, Linkable {
 
 		if ( self::PROFILE_ID_TOKEN === $this->profileSource() && ! Jwt::isSupported() ) {
 			return 'This server has no OpenSSL, so it cannot check the tokens ' . $this->label() . ' issues.';
+		}
+
+		if ( ! Notifications::urlIsPinned() ) {
+			return 'Set site_url in config.php first. The address ' . $this->label()
+				. ' sends people back to is built from it, and without it that address changes '
+				. 'with every request, so there is nothing stable to register.';
 		}
 
 		return 'Needs the domain, client ID and client secret from your ' . $this->label() . ' application.';

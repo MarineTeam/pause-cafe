@@ -44,12 +44,30 @@ class MagicLinkMethod implements Method {
 	}
 
 	public function isConfigured(): bool {
-		// A link nobody can be sent is not a way of signing in.
-		return Mailer::isEnabled();
+		/*
+		 * Two things, and the second is a refusal rather than a limitation.
+		 *
+		 * A link nobody can be sent is not a way of signing in. And without a
+		 * pinned site_url the address in that link comes from the Host header
+		 * of whoever asked for it -- so somebody can request a link for another
+		 * member's address while claiming to be their own host, and the email
+		 * that lands in that member's inbox carries a working one-time token
+		 * pointing at the attacker. One click and the session is theirs.
+		 *
+		 * This used to be a warning on the settings screen while the links went
+		 * out regardless. A warning is not a control.
+		 */
+		return Mailer::isEnabled() && Notifications::urlIsPinned();
 	}
 
 	public function requirement(): string {
-		return 'Email is switched off, so no link could be sent. Turn it on under Settings.';
+		if ( ! Mailer::isEnabled() ) {
+			return 'Email is switched off, so no link could be sent. Turn it on under Settings.';
+		}
+
+		return 'Set site_url in config.php first. Without it the address in the email is taken from '
+			. 'whatever the browser asked for, so a link carrying a working sign-in token can be '
+			. 'made to point somewhere else.';
 	}
 
 	public function fields(): array {
@@ -75,6 +93,20 @@ class MagicLinkMethod implements Method {
 	}
 
 	public function start( array $input ): Outcome {
+		/*
+		 * Checked here as well as by isConfigured(), and the repetition is the
+		 * point. The route only offers methods that are available, but this
+		 * method is the thing that puts a one-time token into an email, and a
+		 * guard that lives entirely in the caller is a guard the next caller
+		 * will not have. Nothing below this line may run against an address
+		 * taken from the request.
+		 */
+		if ( ! Notifications::urlIsPinned() ) {
+			return Outcome::failure(
+				'Sign-in links are not available until site_url is set in config.php. Please tell an organiser.'
+			);
+		}
+
 		$email = Users::normaliseEmail( (string) ( $input['email'] ?? '' ) );
 
 		/*

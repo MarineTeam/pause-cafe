@@ -12,6 +12,17 @@ Notable changes to the standalone app. Dates are the day the change landed on
 
 ### Security
 
+- **A forged `Host` header could send somebody's sign-in link to an attacker.**
+  With `site_url` unset, every address the app builds came from the request's
+  `Host` header — so asking for a sign-in link for another member's address
+  while claiming to be your own host produced an email, in their inbox, carrying
+  a working one-time token pointing at yours. There was a warning about this on
+  the settings screen while the links went out regardless; a warning is not a
+  control. Sign-in links and identity providers are now unavailable until
+  `site_url` is set, refusing in the method as well as at the route. Passwords
+  are unaffected, and ordinary emails — order confirmations and the like, which
+  carry no token — still fall back to the request. Reported by a security audit.
+
 - **Deleting a member destroyed the money as well as the account.**
   `wallet_entries.user_id` and `orders.user_id` both cascade from `users` with
   foreign keys on, so `DELETE FROM users` removed the person, every order they
