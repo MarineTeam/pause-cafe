@@ -626,6 +626,7 @@ $router->get(
 				// page can say so rather than leaving an organiser to wonder
 				// why a dish they cannot find still has orders against it.
 				'retired'     => $serviceDate ? Orders::retiredDishes( $serviceDate ) : array(),
+				'trashCount'  => count( Orders::trashed() ),
 			)
 		);
 	}
@@ -638,6 +639,54 @@ $router->get(
  * date being shown is dropped rather than acted on — the form is the only thing
  * that says which orders these are, and it arrives from a browser.
  */
+$router->get(
+	'/admin/orders/trash',
+	static function () use ( $requireAdmin ): void {
+		$requireAdmin();
+
+		echo View::render(
+			'admin/orders-trash',
+			array(
+				'title'  => 'Trash',
+				'orders' => Orders::trashed(),
+			)
+		);
+	}
+);
+
+$router->post(
+	'/admin/orders/trash',
+	static function () use ( $requireAdmin, $post ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		$orderId = (int) ( $_POST['id'] ?? 0 );
+
+		try {
+			if ( 'purge' === $post( 'action' ) ) {
+				$order = Orders::find( $orderId );
+				$who   = $order ? (int) $order['user_id'] : 0;
+
+				Orders::purge( $orderId );
+
+				View::flash(
+					'success',
+					'Order #' . $orderId . ' deleted for good, along with everything it moved. '
+					. ( $who ? 'That account now holds ' . Money::format( Wallet::balance( $who ) ) . '.' : '' )
+				);
+			} else {
+				Orders::restore( $orderId );
+
+				View::flash( 'success', 'Order #' . $orderId . ' restored.' );
+			}
+		} catch ( \RuntimeException $e ) {
+			View::flash( 'error', $e->getMessage() );
+		}
+
+		View::redirect( '/admin/orders/trash' );
+	}
+);
+
 $router->post(
 	'/admin/orders/bulk',
 	static function () use ( $requireAdmin, $post ): void {
@@ -692,6 +741,20 @@ $router->post(
 				}
 
 				View::flash( 'success', $done . ' order(s) marked ' . ( $paid ? 'paid' : 'unpaid' ) . '.' );
+				break;
+
+			case 'trash':
+				$done = 0;
+
+				foreach ( $chosen as $order ) {
+					Orders::trash( (int) $order['id'] );
+					++$done;
+				}
+
+				View::flash(
+					'success',
+					$done . ' order(s) moved to the trash. Nothing was refunded — cancel first if money should go back.'
+				);
 				break;
 
 			case 'cancel':

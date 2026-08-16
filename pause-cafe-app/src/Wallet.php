@@ -20,6 +20,32 @@ class Wallet {
 	public const KIND_ADJUSTMENT = 'adjustment';
 	public const KIND_ZEFFY      = 'zeffy';
 
+	/**
+	 * Rewrites the running total stored against each entry.
+	 *
+	 * The balance itself is always the sum of the deltas, so it is never wrong.
+	 * What can go wrong is the number printed beside each line of a statement:
+	 * it was worked out when the entry was written, and removing an earlier
+	 * entry leaves everything below the gap carrying on from a figure that no
+	 * longer follows. Only deleting history needs this, which is the one thing
+	 * an append-only ledger was not built to do.
+	 */
+	public static function recompute( int $userId ): void {
+		$pdo = Database::pdo();
+
+		$rows = $pdo->prepare( 'SELECT id, delta_cents FROM wallet_entries WHERE user_id = ? ORDER BY id' );
+		$rows->execute( array( $userId ) );
+
+		$update  = $pdo->prepare( 'UPDATE wallet_entries SET balance_after_cents = ? WHERE id = ?' );
+		$running = 0;
+
+		foreach ( $rows->fetchAll() as $row ) {
+			$running += (int) $row['delta_cents'];
+
+			$update->execute( array( $running, (int) $row['id'] ) );
+		}
+	}
+
 	public static function balance( int $userId ): int {
 		$statement = Database::pdo()->prepare(
 			'SELECT COALESCE(SUM(delta_cents), 0) FROM wallet_entries WHERE user_id = ?'

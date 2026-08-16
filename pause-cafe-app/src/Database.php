@@ -308,6 +308,18 @@ class Database {
 		self::addColumnIfMissing( 'users', 'disabled_at', "TEXT NOT NULL DEFAULT ''" );
 
 		/*
+		 * What a trashed order goes back to if it is restored.
+		 *
+		 * Trashing is done by moving the status rather than by a flag beside it,
+		 * so every query that already reads "confirmed" -- the cook list, what
+		 * is still owed, how many portions are left -- leaves a trashed order
+		 * out without being told to. A flag would have needed all of them
+		 * changed, and would have been wrong wherever one was missed. The cost
+		 * is that the old status has nowhere to live, so it lives here.
+		 */
+		self::addColumnIfMissing( 'orders', 'restore_status', "TEXT NOT NULL DEFAULT ''" );
+
+		/*
 		 * External sign-ins waiting for an organiser to say they are the same
 		 * person as an account that already exists here.
 		 *
