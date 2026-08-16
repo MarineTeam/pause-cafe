@@ -80,6 +80,22 @@ class Wallet {
 	 * Callers already inside a transaction pass $ownTransaction = false so the
 	 * order and its debit commit or fail together.
 	 *
+	 * When it does open its own, it opens an immediate one, and that word is
+	 * the whole of the difference. This reads the balance and then writes a row
+	 * derived from it, which is the shape that goes wrong under concurrency --
+	 * and PDO's beginTransaction() issues a plain BEGIN, which in SQLite takes
+	 * no write lock until the first write. Two of those overlap happily until
+	 * the second tries to upgrade, at which point WAL refuses it outright with
+	 * SQLITE_BUSY_SNAPSHOT rather than let the read go stale. Safe, but it
+	 * surfaces as "database is locked" on a webhook that had done nothing
+	 * wrong, and busy_timeout cannot help because a stale snapshot is a
+	 * conflict rather than a wait.
+	 *
+	 * Taking the write lock up front turns that into the wait it should have
+	 * been. The reason it belongs here rather than in the callers is that an
+	 * invariant every caller has to remember is one a caller will eventually
+	 * forget -- and the balance is not the thing to find that out about.
+	 *
 	 * @throws \RuntimeException When a reference has already been posted.
 	 */
 	public static function post(
@@ -93,8 +109,14 @@ class Wallet {
 	): int {
 		$pdo = Database::pdo();
 
+		/*
+		 * exec() rather than PDO::beginTransaction(), which can only issue a
+		 * plain BEGIN. PDO therefore does not know a transaction is open, so
+		 * commit() and rollBack() are out too and inTransaction() would lie --
+		 * hence tracking it here instead of asking.
+		 */
 		if ( $ownTransaction ) {
-			$pdo->beginTransaction();
+			$pdo->exec( 'BEGIN IMMEDIATE' );
 		}
 
 		try {
@@ -120,13 +142,18 @@ class Wallet {
 			);
 
 			if ( $ownTransaction ) {
-				$pdo->commit();
+				$pdo->exec( 'COMMIT' );
 			}
 
 			return $balance;
 		} catch ( PDOException $e ) {
-			if ( $ownTransaction && $pdo->inTransaction() ) {
-				$pdo->rollBack();
+			if ( $ownTransaction ) {
+				try {
+					$pdo->exec( 'ROLLBACK' );
+				} catch ( \Throwable $ignored ) {
+					// Never opened, or already unwound. Either way the failure
+					// worth reporting is the one below, not this.
+				}
 			}
 
 			// The unique index on (kind, reference) is what stops a webhook

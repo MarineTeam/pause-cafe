@@ -15,6 +15,7 @@ fresh_database();
 require dirname( __DIR__ ) . '/src/bootstrap.php';
 
 use PauseCafe\Cart;
+use PauseCafe\Database;
 use PauseCafe\Groups;
 use PauseCafe\Kitchen;
 use PauseCafe\Mail\LogTransport;
@@ -138,6 +139,47 @@ check( 'the ledger has both entries', count( Wallet::entries( $memberId ) ), 2 )
 check( 'money is formatted', Money::format( 4500 ), '$45.00' );
 check( 'a negative reads correctly', Money::format( -1250 ), '-$12.50' );
 check( 'typed amounts parse', Money::parse( '$1,234.56' ), 123456 );
+
+/*
+ * Posting reads the balance and then writes a row derived from it, which is the
+ * shape that goes wrong when two of them overlap. The primitive opens its own
+ * immediate transaction rather than trusting each caller to have opened the
+ * right kind -- an invariant every caller must remember is one a caller will
+ * eventually forget.
+ *
+ * Interleaving cannot honestly be produced from a single process, so what is
+ * checked here is what can be: that a failure inside the primitive leaves no
+ * transaction open, and that the ledger and the balance agree afterwards. A
+ * transaction left dangling would break every write that followed, which is a
+ * far worse outcome than the collision it came from.
+ */
+// Its own account, so the balances everything below asserts on stay put.
+$ledgerId = Users::create( 'ledger@example.org', 'a-good-password', 'Lee Ledger', '', Users::ROLE_MEMBER, true );
+$dupRef   = 'zeffy-only-once';
+
+Wallet::credit( $ledgerId, 1000, Wallet::KIND_ZEFFY, 'First delivery', $dupRef );
+
+check( 'a payment lands once', Wallet::balance( $ledgerId ), 1000 );
+
+check_throws(
+	'and the same reference is refused',
+	static fn() => Wallet::credit( $ledgerId, 1000, Wallet::KIND_ZEFFY, 'Delivered twice', $dupRef ),
+	'already been recorded'
+);
+
+check( 'so the money did not double', Wallet::balance( $ledgerId ), 1000 );
+check( 'no transaction was left open', Database::pdo()->inTransaction(), false );
+
+// The connection still works, which is the thing a dangling transaction takes.
+Wallet::credit( $ledgerId, 100, Wallet::KIND_TOPUP, 'After the refusal' );
+
+check( 'and posting still works afterwards', Wallet::balance( $ledgerId ), 1100 );
+
+$ledgerSum = (int) Database::pdo()
+	->query( 'SELECT COALESCE(SUM(delta_cents), 0) FROM wallet_entries WHERE user_id = ' . (int) $ledgerId )
+	->fetchColumn();
+
+check( 'the entries and the balance agree', $ledgerSum, Wallet::balance( $ledgerId ) );
 
 /* ------------------------------------------------------------------ */
 
