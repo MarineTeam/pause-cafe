@@ -645,6 +645,21 @@ An append-only ledger. There is no balance column anywhere — a balance is the
 sum of the entries, and every entry records who moved the money, when, why, and
 what it refers to.
 
+Each entry also stores the running total as it stood, but only so a statement
+reads back without re-adding the history. Nothing decides anything from it. That
+distinction is what makes the ledger safe under concurrency: two writes racing
+could at worst leave one of those figures stale, never the balance.
+
+**`Wallet::post()` takes the write lock before it reads.** It reads the balance
+and then writes a row derived from it, and where it opens its own transaction it
+opens an immediate one rather than the plain `BEGIN` PDO would issue. Without
+that, SQLite in WAL mode refuses the write outright when another connection has
+committed since the read — safe, but it arrives as "database is locked" on a
+webhook that did nothing wrong, and `busy_timeout` does not help because a stale
+snapshot is a conflict rather than a wait. The rule lives in the primitive
+because an invariant every caller has to remember is one a caller will
+eventually forget.
+
 Three ways money arrives:
 
 - **Zeffy webhook.** Zeffy POSTs to `/webhook/zeffy` when a payment completes;
@@ -677,7 +692,7 @@ kitchen report with print and CSV.
 
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php          #  51 assertions
-php -d extension=php_pdo_sqlite tests/test-app.php               # 352 assertions
+php -d extension=php_pdo_sqlite tests/test-app.php               # 358 assertions
 php -d extension=php_pdo_sqlite tests/test-signin.php            # 200 assertions
 php -d extension=php_pdo_sqlite tests/test-design.php            #  67 assertions
 php -d extension=php_pdo_sqlite tests/test-orders-admin.php      #  28 assertions
@@ -686,7 +701,7 @@ php -d extension=php_pdo_sqlite tests/test-menu-flexibility.php  #  18 assertion
 php -d extension=php_pdo_sqlite tests/test-deletion.php          #  61 assertions
 ```
 
-All of them run against a throwaway database and need no server. 853 in total.
+All of them run against a throwaway database and need no server. 859 in total.
 
 The HTTP layer — sessions, CSRF, approval gating, checkout, the side cart,
 access control — has its own end-to-end run against a live server:

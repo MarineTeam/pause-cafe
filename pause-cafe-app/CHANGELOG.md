@@ -10,6 +10,20 @@ Notable changes to the standalone app. Dates are the day the change landed on
 
 ## Unreleased
 
+### Changed
+
+- **`Wallet::post()` opens an immediate transaction when it opens its own.** It
+  reads the balance and then writes a row derived from it, which is the shape
+  that goes wrong under concurrency, and PDO's `beginTransaction()` can only
+  issue a plain `BEGIN` — which takes no write lock until the first write. The
+  balance itself was never at risk, because it is always `SUM(delta_cents)` and
+  WAL refuses a stale read-then-write outright rather than losing an update; the
+  symptom was "database is locked" on a webhook that had done nothing wrong,
+  which `busy_timeout` cannot help with because a stale snapshot is a conflict
+  and not a wait. Taking the lock up front makes it the wait it should have
+  been. Raised by a security audit as a financial invariant; landing as
+  reliability, since no money could have gone astray.
+
 ### Security
 
 - **Registration had no throttle at all**, unlike signing in. A script fetches
