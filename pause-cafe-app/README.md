@@ -280,6 +280,14 @@ changing.
 
 ## Ordering
 
+**Registering is throttled.** A script fetches the form for a CSRF token like
+anybody else, so the token is not what stops one; without a limit it can write a
+row, email the organisers and leave a name to decide about, all night. Three
+limits apply — per address, per source address, and one for the whole site,
+which is the only one that cannot be got round by varying something. They are
+counted in their own table, so a burst of sign-ups cannot lock the congregation
+out of signing in. `php tools/rescue.php` clears both.
+
 Only approved accounts can order. Anyone can register, but an organiser has to
 approve them, and that is checked on the server at checkout — not just hidden in
 the interface.
@@ -670,7 +678,7 @@ kitchen report with print and CSV.
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php          #  51 assertions
 php -d extension=php_pdo_sqlite tests/test-app.php               # 352 assertions
-php -d extension=php_pdo_sqlite tests/test-signin.php            # 189 assertions
+php -d extension=php_pdo_sqlite tests/test-signin.php            # 200 assertions
 php -d extension=php_pdo_sqlite tests/test-design.php            #  67 assertions
 php -d extension=php_pdo_sqlite tests/test-orders-admin.php      #  28 assertions
 php -d extension=php_pdo_sqlite tests/test-order-edits.php       #  76 assertions
@@ -678,7 +686,7 @@ php -d extension=php_pdo_sqlite tests/test-menu-flexibility.php  #  18 assertion
 php -d extension=php_pdo_sqlite tests/test-deletion.php          #  61 assertions
 ```
 
-All of them run against a throwaway database and need no server. 842 in total.
+All of them run against a throwaway database and need no server. 853 in total.
 
 The HTTP layer — sessions, CSRF, approval gating, checkout, the side cart,
 access control — has its own end-to-end run against a live server:
@@ -686,7 +694,7 @@ access control — has its own end-to-end run against a live server:
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                                # 270 assertions
+bash tests/e2e.sh                                                # 274 assertions
 ```
 
 It expects an empty database, since it drives first-run setup itself.

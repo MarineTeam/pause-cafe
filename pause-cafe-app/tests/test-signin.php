@@ -34,6 +34,7 @@ use PauseCafe\SignIn\Method;
 use PauseCafe\SignIn\Outcome;
 use PauseCafe\SignIn\PasswordMethod;
 use PauseCafe\SignIn\Profile;
+use PauseCafe\Signups;
 use PauseCafe\Users;
 use PauseCafe\Wallet;
 
@@ -1212,6 +1213,108 @@ check( 'a password only counts if they have one', Identities::waysInWithout( $st
 Users::setPassword( $stranded, 'a-good-password' );
 
 check( 'once set, it does', Identities::waysInWithout( $stranded, $onlyLink ), 1 );
+
+/* =========================================================================
+ * Registering in bulk
+ *
+ * Registration is cheap to ask for and not cheap to serve: a row, an email to
+ * the organisers, and a name for somebody to look at and decide about. CSRF
+ * does not stop a script -- it fetches the form for a token like anybody else.
+ * The accounts land unapproved and cannot order, so this is abuse and delivery
+ * rather than a way in, which is why the limits are about volume.
+ * ====================================================================== */
+
+echo "\nSign-ups are throttled, separately from sign-ins\n";
+
+Signups::clearAll();
+LoginAttempts::clearAll();
+
+Schedule::freeze( new DateTimeImmutable( '2026-08-13 09:00:00', new DateTimeZone( 'America/Vancouver' ) ) );
+
+check( 'a first sign-up goes straight through', Signups::retryAfter( 'new@example.org', '10.0.0.1' ), 0 );
+
+// The same address, over and over.
+for ( $i = 0; $i < 3; $i++ ) {
+	Signups::record( 'keen@example.org', '10.0.0.1' );
+}
+
+check( 'the same address is held after three', Signups::retryAfter( 'keen@example.org', '10.0.0.9' ) > 0, true );
+check( 'while another from elsewhere is not', Signups::retryAfter( 'other@example.org', '10.0.0.9' ), 0 );
+
+/*
+ * Varying the address is the obvious way round a per-address limit, so the
+ * source has its own -- loose, because a welcome table signing people up one
+ * after another all comes from the one router.
+ */
+Signups::clearAll();
+
+for ( $i = 0; $i < 10; $i++ ) {
+	Signups::record( 'person' . $i . '@example.org', '10.0.0.5' );
+}
+
+check( 'ten from one place is enough to slow it down', Signups::retryAfter( 'fresh@example.org', '10.0.0.5' ) > 0, true );
+check( 'but somewhere else is unaffected', Signups::retryAfter( 'fresh@example.org', '10.0.0.6' ), 0 );
+
+/*
+ * And varying the source too, which a botnet does for free. The global limit is
+ * the only one that cannot be got round by changing something, so it is the one
+ * that actually bounds the damage.
+ */
+Signups::clearAll();
+
+for ( $i = 0; $i < 40; $i++ ) {
+	Signups::record( 'bot' . $i . '@example.org', '10.9.' . intdiv( $i, 250 ) . '.' . ( $i % 250 ) );
+}
+
+check(
+	'forty across the site holds everybody, whatever address they use',
+	Signups::retryAfter( 'innocent@example.org', '192.168.1.1' ) > 0,
+	true
+);
+
+echo "\nAnd the wait passes on its own\n";
+
+Schedule::freeze( new DateTimeImmutable( '2026-08-13 10:01:00', new DateTimeZone( 'America/Vancouver' ) ) );
+
+check( 'an hour later it is clear again', Signups::retryAfter( 'innocent@example.org', '192.168.1.1' ), 0 );
+
+/*
+ * Written in local time and read back in UTC is what once made the sign-in
+ * throttle inert while every test passed, because the clock was frozen to UTC
+ * and the two agreed. This suite freezes to Vancouver so they cannot.
+ */
+Schedule::freeze( new DateTimeImmutable( '2026-08-13 09:30:00', new DateTimeZone( 'America/Vancouver' ) ) );
+
+Signups::clearAll();
+
+for ( $i = 0; $i < 3; $i++ ) {
+	Signups::record( 'zoned@example.org', '10.0.0.1' );
+}
+
+$wait = Signups::retryAfter( 'zoned@example.org', '10.0.0.1' );
+
+check( 'the wait is a real number of seconds, not a negative one', $wait > 0, true );
+check( 'and no longer than the window', $wait <= 3600, true );
+
+echo "\nSign-ups and sign-ins do not count against each other\n";
+
+/*
+ * The reason for the separate table. If they shared one, anybody could lock the
+ * congregation out of their accounts just by filling in the registration form
+ * -- which is a far better prize than the noise they were making.
+ */
+Signups::clearAll();
+LoginAttempts::clearAll();
+
+for ( $i = 0; $i < 20; $i++ ) {
+	Signups::record( 'flood' . $i . '@example.org', '10.0.0.7' );
+}
+
+check( 'a flood of sign-ups holds the sign-up form', Signups::retryAfter( 'more@example.org', '10.0.0.7' ) > 0, true );
+check( 'and leaves signing in alone', LoginAttempts::retryAfter( 'ruth@example.org', '10.0.0.7' ), 0 );
+
+Signups::clearAll();
+LoginAttempts::clearAll();
 
 if ( is_file( $logPath ) ) {
 	unlink( $logPath );

@@ -32,6 +32,7 @@ use PauseCafe\Schedule;
 use PauseCafe\Schedules;
 use PauseCafe\Settings;
 use PauseCafe\SignIn;
+use PauseCafe\Signups;
 use PauseCafe\SignIn\Outcome;
 use PauseCafe\Themes;
 use PauseCafe\Users;
@@ -494,6 +495,24 @@ $router->post(
 		if ( ! Settings::bool( 'allow_registration' ) ) {
 			View::redirect( '/login' );
 		}
+
+		/*
+		 * Registration is cheap to ask for and not cheap to serve: a row, an
+		 * email to the organisers, and a name for somebody to look at and
+		 * decide about. A script can do that all night, and CSRF does not stop
+		 * one -- it fetches the form for a token like anybody else.
+		 *
+		 * Counted before the account is made, so attempts that fail count too.
+		 */
+		$signupIp = LoginAttempts::ip();
+		$waitFor  = Signups::retryAfter( $post( 'email' ), $signupIp );
+
+		if ( $waitFor > 0 ) {
+			View::flash( 'error', Signups::message( $waitFor ) );
+			View::redirect( '/register' );
+		}
+
+		Signups::record( $post( 'email' ), $signupIp );
 
 		try {
 			$newUserId = Users::create(

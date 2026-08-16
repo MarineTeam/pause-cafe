@@ -1052,6 +1052,44 @@ done
 want "and it can be emptied again" "$(curl -s -b $M -c $M "$BASE/cart" | grep -c 'Nothing in the cart yet')" "1"
 
 echo ""
+echo "Registering in bulk"
+# A script fetches the form for a CSRF token like anybody else, so the token is
+# not what stops this. Ten from one address is the loose per-source limit --
+# loose because a welcome table signing people up one after another all arrives
+# from the same router.
+R=$(mktemp)
+BULK=0
+
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  OUT=$(curl -s -b $R -c $R -X POST "$BASE/register" \
+    -d "_token=$(tok $R /register)" \
+    -d "name=Bot $i" -d "email=bot$i@example.org" -d "password=a-good-password")
+
+  if echo "$OUT" | grep -q "Too many sign-ups"; then BULK=1; fi
+done
+
+# The refusal arrives on the redirect target rather than the POST, so check
+# there too before deciding.
+if curl -s -b $R -c $R "$BASE/register" | grep -q "Too many sign-ups"; then BULK=1; fi
+
+want "a run of sign-ups is eventually refused" "$BULK" "1"
+
+ACCOUNTS=$(curl -s -b $A -c $A "$BASE/admin/users" | grep -c "bot[0-9]*@example.org")
+if [ "$ACCOUNTS" -lt 12 ]; then ok "and not all of them became accounts"; else bad "and not all of them became accounts" "all 12 got through"; fi
+
+# Signing in must be untouched by that, or filling in the registration form
+# would be a way to lock the congregation out. A fresh jar, because the member's
+# own is already signed in and /login just redirects it -- with no form on the
+# other end there is no token, and the post fails for the wrong reason.
+FRESH=$(mktemp)
+want "signing in still works after all that" \
+  "$(curl -s -o /dev/null -w '%{http_code}' -b $FRESH -c $FRESH -X POST "$BASE/login" \
+     -d "_token=$(tok $FRESH /login)" -d "email=sam@example.org" -d "password=battery-staple")" "302"
+want "and really is signed in" "$(code $FRESH /account)" "200"
+
+rm -f "$R" "$FRESH"
+
+echo ""
 echo "Access control"
 want "a member cannot reach the admin area" "$(code $M /admin)" "403"
 want "a signed-out visitor is redirected from the cart" "$(code /dev/null /cart)" "302"
