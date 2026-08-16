@@ -391,6 +391,28 @@ class Database {
 		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_attempt_ip ON login_attempts (ip, created_at)' );
 
 		/*
+		 * Sign-ups, counted separately from sign-ins on purpose.
+		 *
+		 * Sharing one table would mean a burst of registrations counting
+		 * against the sign-in limits, so anybody could lock the congregation
+		 * out of their accounts by filling in the registration form -- which
+		 * would hand an attacker something far better than the noise they were
+		 * making in the first place.
+		 */
+		$pdo->exec(
+			"CREATE TABLE IF NOT EXISTS signup_attempts (
+				id         INTEGER PRIMARY KEY AUTOINCREMENT,
+				email      TEXT NOT NULL DEFAULT '',
+				ip         TEXT NOT NULL DEFAULT '',
+				created_at TEXT NOT NULL
+			)"
+		);
+
+		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_signup_email ON signup_attempts (email, created_at)' );
+		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_signup_ip ON signup_attempts (ip, created_at)' );
+		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_signup_time ON signup_attempts (created_at)' );
+
+		/*
 		 * Added after the first release, so they arrive by ALTER rather than in
 		 * the CREATE above -- an existing install would never see a changed
 		 * CREATE TABLE IF NOT EXISTS.

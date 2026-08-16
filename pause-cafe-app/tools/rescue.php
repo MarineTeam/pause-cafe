@@ -30,6 +30,7 @@ use PauseCafe\Identities;
 use PauseCafe\LoginAttempts;
 use PauseCafe\Settings;
 use PauseCafe\SignIn;
+use PauseCafe\Signups;
 use PauseCafe\Users;
 
 $arguments = array_slice( $argv, 1 );
@@ -85,6 +86,14 @@ $cleared = LoginAttempts::clearAll();
 
 if ( $cleared > 0 ) {
 	echo 'Cleared ' . $cleared . " recent failed sign-in attempt(s), so nothing is locked.\n";
+}
+
+// Sign-ups are throttled separately, and somebody at the command line who
+// cannot make an account wants that cleared for the same reason.
+$signups = Signups::clearAll();
+
+if ( $signups > 0 ) {
+	echo 'Cleared ' . $signups . " recent sign-up attempt(s).\n";
 }
 
 if ( '--reset' === $command ) {

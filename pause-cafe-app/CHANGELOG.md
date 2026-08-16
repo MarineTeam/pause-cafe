@@ -12,6 +12,15 @@ Notable changes to the standalone app. Dates are the day the change landed on
 
 ### Security
 
+- **Registration had no throttle at all**, unlike signing in. A script fetches
+  the form for a CSRF token like anybody else, so nothing stopped it writing a
+  row, emailing the organisers and leaving a name to decide about, over and
+  over. Three limits now: per address, per source address (loose, because a
+  welcome table all arrives from one router), and one for the whole site — the
+  last being the only one an attacker cannot get around by varying something.
+  Counted in their own table, so a burst of sign-ups cannot lock the
+  congregation out of signing in. Reported by a security audit.
+
 - **A forged `Host` header could send somebody's sign-in link to an attacker.**
   With `site_url` unset, every address the app builds came from the request's
   `Host` header — so asking for a sign-in link for another member's address
