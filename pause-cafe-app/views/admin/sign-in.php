@@ -31,18 +31,29 @@ $routes = SignIn::organiserRoutes();
 
 <?php
 /*
- * Emailed links carry a one-time token in a URL the server builds. Without a
- * pinned address that URL comes from the request's Host header, so somebody
- * can ask for a link while claiming to be a different host and have the token
- * emailed pointing at theirs. Only worth saying when links are actually on.
+ * Said when a method is switched on and being held back for want of a pinned
+ * address -- which is the only time it is actionable. It cannot be conditioned
+ * on the method being available, because being unavailable is exactly what is
+ * being explained.
  */
+$blocked = array();
+
+if ( ! \PauseCafe\Notifications::urlIsPinned() ) {
+	foreach ( $methods as $blockedId => $blockedMethod ) {
+		if ( 'password' !== $blockedId && SignIn::isEnabled( $blockedId ) ) {
+			$blocked[] = $blockedMethod->label();
+		}
+	}
+}
 ?>
-<?php if ( SignIn::isAvailable( 'magic' ) && ! \PauseCafe\Notifications::urlIsPinned() ) : ?>
+<?php if ( $blocked ) : ?>
 	<div class="flash flash--error">
 		<strong>Set <code>site_url</code> in <code>config.php</code>.</strong>
-		Sign-in links are switched on, and without it the address in those emails
-		is taken from whatever the browser asked for — which means a link carrying
-		a working sign-in token can be made to point somewhere else.
+		<?= e( implode( ' and ', $blocked ) ) ?>
+		<?= count( $blocked ) > 1 ? 'are' : 'is' ?> switched on but will not run without it.
+		Every address the site puts in an email or hands to a provider is built from
+		it, and without it they come from whatever the browser asked for — so a link
+		carrying a working sign-in token can be made to point somewhere else.
 	</div>
 <?php endif; ?>
 

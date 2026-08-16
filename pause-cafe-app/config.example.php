@@ -29,6 +29,11 @@ return array(
 	 * claiming to be another host, and the link emailed to the account holder
 	 * will point there, carrying a working one-time token.
 	 *
+	 * Sign-in links and identity providers therefore refuse to run while this
+	 * is blank, and say so on the Signing in screen. Passwords are unaffected,
+	 * so a site can be set up and used before this is filled in -- it just
+	 * cannot hand anybody a link or send them to a provider until it is.
+	 *
 	 * It also fixes the scheme behind a proxy, where PHP often cannot tell that
 	 * the visitor arrived over HTTPS.
 	 */

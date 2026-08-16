@@ -5,11 +5,17 @@
 #
 # Start a server on a throwaway database first:
 #
+#   cp config.example.php config.php     # then set site_url in it
 #   rm -f data/pause-cafe.sqlite*
 #   php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
 #   bash tests/e2e.sh
 #
 # It expects an empty database -- it drives first-run setup itself.
+#
+# config.php must set site_url to the address above. Sign-in links and identity
+# providers refuse to run without one, because the address in an emailed link
+# would otherwise come from the request's Host header -- so with it unset the
+# sign-in-link section here fails, correctly.
 
 set -u
 
