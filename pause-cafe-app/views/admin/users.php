@@ -35,7 +35,13 @@ use PauseCafe\Money;
 					<td><?= e( ucfirst( $row['role'] ) ) ?></td>
 					<td class="num"><?= e( Money::format( (int) $row['balance_cents'] ) ) ?></td>
 					<td>
-						<?php if ( (int) $row['is_approved'] === 1 ) : ?>
+						<?php
+						// Closed beats waiting: somebody who cannot sign in at all is
+						// not waiting for approval, whatever the approval flag says.
+						?>
+						<?php if ( \PauseCafe\Users::isDisabled( $row ) ) : ?>
+							<span class="pill pill--closed">Closed</span>
+						<?php elseif ( (int) $row['is_approved'] === 1 ) : ?>
 							<span class="pill pill--open">Approved</span>
 						<?php else : ?>
 							<span class="pill pill--closed">Waiting</span>
@@ -111,11 +117,58 @@ use PauseCafe\Money;
 									<button type="submit">Save</button>
 								</form>
 
-								<form method="post" action="/admin/users/<?= (int) $row['id'] ?>/delete" style="margin-top:16px"
-									onsubmit="return confirm('Delete this account? Their orders and wallet history go too.')">
-									<?= Csrf::field() ?>
-									<button type="submit" class="link-button">Delete account</button>
-								</form>
+								<?php
+								/*
+								 * Closing, not deleting, unless there is genuinely
+								 * nothing to lose. Orders and wallet entries cascade
+								 * from users, so removing the row takes the money with
+								 * it -- what was collected, what came back, what is
+								 * still owed.
+								 */
+								$closed    = \PauseCafe\Users::isDisabled( $row );
+								$deletable = \PauseCafe\Users::isDeletable( (int) $row['id'] );
+								?>
+
+								<div style="margin-top:16px">
+									<?php if ( $closed ) : ?>
+										<p class="muted">
+											Closed <?= e( $row['disabled_at'] ) ?> UTC. Their orders and wallet
+											history are still here.
+										</p>
+
+										<form method="post" action="/admin/users/<?= (int) $row['id'] ?>/reopen">
+											<?= Csrf::field() ?>
+											<button type="submit" class="button button--quiet">Reopen account</button>
+										</form>
+									<?php else : ?>
+										<form method="post" action="/admin/users/<?= (int) $row['id'] ?>/delete"
+											onsubmit="return confirm('Close this account? They will not be able to sign in. Nothing they have ordered or paid is lost.')">
+											<?= Csrf::field() ?>
+											<button type="submit" class="link-button">Close account</button>
+										</form>
+									<?php endif; ?>
+
+									<?php if ( $deletable ) : ?>
+										<?php
+										// Nothing behind it: a spam registration, or an
+										// account made while testing. Safe to remove
+										// outright, and tidier than leaving it closed.
+										?>
+										<form method="post" action="/admin/users/<?= (int) $row['id'] ?>/delete"
+											style="margin-top:8px"
+											onsubmit="return confirm('Delete this account for good? It has no orders or wallet history, so nothing else goes with it.')">
+											<?= Csrf::field() ?>
+											<input type="hidden" name="action" value="delete">
+											<button type="submit" class="link-button">Delete for good</button>
+										</form>
+										<p class="help">No orders and no wallet history, so there is nothing to keep.</p>
+									<?php else : ?>
+										<p class="help">
+											This account has orders or wallet history, so it cannot be deleted —
+											that would take the money with it.
+										</p>
+									<?php endif; ?>
+								</div>
 							</div>
 						</details>
 					</td>

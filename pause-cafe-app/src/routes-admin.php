@@ -225,7 +225,7 @@ $router->post(
 
 $router->post(
 	'/admin/users/{id}/delete',
-	static function ( string $id ) use ( $requireAdmin ): void {
+	static function ( string $id ) use ( $requireAdmin, $post ): void {
 		$requireAdmin();
 		Csrf::verify();
 
@@ -241,9 +241,45 @@ $router->post(
 			View::redirect( '/admin/users' );
 		}
 
-		Users::delete( $userId );
+		/*
+		 * Closing is the default and deleting is the exception, because orders
+		 * and wallet_entries cascade from users: removing the row takes the
+		 * money with it. An account with nothing behind it can still go
+		 * outright, which is what keeps the users screen tidy after a spam
+		 * registration or a test.
+		 */
+		if ( 'delete' === $post( 'action' ) ) {
+			try {
+				Users::delete( $userId );
+			} catch ( \RuntimeException $e ) {
+				View::flash( 'error', $e->getMessage() );
+				View::redirect( '/admin/users' );
+			}
 
-		View::flash( 'success', 'Account deleted, along with its orders and ledger.' );
+			View::flash( 'success', 'Account deleted. It had no orders or wallet history to lose.' );
+			View::redirect( '/admin/users' );
+		}
+
+		Users::disable( $userId );
+
+		View::flash(
+			'success',
+			'Account closed. They can no longer sign in, and their orders and wallet history are kept.'
+		);
+
+		View::redirect( '/admin/users' );
+	}
+);
+
+$router->post(
+	'/admin/users/{id}/reopen',
+	static function ( string $id ) use ( $requireAdmin ): void {
+		$requireAdmin();
+		Csrf::verify();
+
+		Users::enable( (int) $id );
+
+		View::flash( 'success', 'Account reopened. They can sign in again.' );
 		View::redirect( '/admin/users' );
 	}
 );

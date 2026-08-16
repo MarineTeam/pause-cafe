@@ -139,6 +139,12 @@ class Users {
 			return null;
 		}
 
+		// A closed account still has its row, and its password still verifies.
+		// Being closed is the whole of what stops it.
+		if ( self::isDisabled( $user ) ) {
+			return null;
+		}
+
 		if ( ! $user ) {
 			/*
 			 * Hash anyway. Returning immediately for an unknown address makes the
@@ -230,11 +236,83 @@ class Users {
 			->fetchColumn();
 	}
 
-	public static function delete( int $id ): void {
+	public static function isDisabled( ?array $user ): bool {
+		return $user && '' !== (string) ( $user['disabled_at'] ?? '' );
+	}
+
+	/**
+	 * Closes an account without destroying anything it did.
+	 *
+	 * This is what used to be deletion, and deletion was the wrong shape for
+	 * it. wallet_entries and orders both cascade from users, so removing the
+	 * row took the ledger and every order with it -- money collected through
+	 * Zeffy, refunds given, amounts still owed, all gone at once and with
+	 * nothing left to reconcile against. An account is a way in; the money is a
+	 * record. Closing the first must not erase the second.
+	 *
+	 * Everything that could sign them back in goes: a closed account that an
+	 * old provider link could still open is not closed.
+	 */
+	public static function disable( int $id ): void {
 		$pdo = Database::pdo();
 
-		// Nothing that could sign the account back in may outlive it.
 		foreach ( array( 'user_identities', 'login_tokens' ) as $table ) {
+			$statement = $pdo->prepare( 'DELETE FROM ' . $table . ' WHERE user_id = ?' );
+			$statement->execute( array( $id ) );
+		}
+
+		$statement = $pdo->prepare( 'UPDATE users SET disabled_at = ? WHERE id = ?' );
+		$statement->execute( array( gmdate( 'Y-m-d H:i:s' ), $id ) );
+	}
+
+	public static function enable( int $id ): void {
+		$statement = Database::pdo()->prepare( "UPDATE users SET disabled_at = '' WHERE id = ?" );
+		$statement->execute( array( $id ) );
+	}
+
+	/**
+	 * Whether the row could be removed outright without losing anything.
+	 *
+	 * True only for an account that never got as far as spending or being
+	 * given money — somebody who registered and was never approved, or a
+	 * account made while testing. Once either table has a row, the only honest
+	 * options are keeping it or knowingly destroying financial history, and the
+	 * first is the default.
+	 */
+	public static function isDeletable( int $id ): bool {
+		$pdo = Database::pdo();
+
+		foreach ( array( 'wallet_entries', 'orders' ) as $table ) {
+			$statement = $pdo->prepare( 'SELECT COUNT(*) FROM ' . $table . ' WHERE user_id = ?' );
+			$statement->execute( array( $id ) );
+
+			if ( (int) $statement->fetchColumn() > 0 ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Removes an account that has no money behind it.
+	 *
+	 * Guarded here rather than in the route, because the cascade is a property
+	 * of the schema and anything calling this deserves the same protection --
+	 * including a future screen nobody has written yet.
+	 *
+	 * @throws \RuntimeException When there is history that deletion would take.
+	 */
+	public static function delete( int $id ): void {
+		if ( ! self::isDeletable( $id ) ) {
+			throw new \RuntimeException(
+				'That account has orders or wallet history, which deleting it would destroy. Close it instead.'
+			);
+		}
+
+		$pdo = Database::pdo();
+
+		foreach ( array( 'user_identities', 'login_tokens', 'identity_link_requests' ) as $table ) {
 			$statement = $pdo->prepare( 'DELETE FROM ' . $table . ' WHERE user_id = ?' );
 			$statement->execute( array( $id ) );
 		}
