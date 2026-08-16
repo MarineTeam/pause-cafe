@@ -31,7 +31,7 @@ use PauseCafe\Settings;
  * All three are one-shot: read out of the session and deleted before the code
  * is exchanged, so a replayed callback finds nothing to match against.
  */
-abstract class OidcMethod implements Method {
+abstract class OidcMethod implements Method, Linkable {
 
 	/** The claims come from a signed ID token, which is verified here. */
 	protected const PROFILE_ID_TOKEN = 'id_token';
@@ -196,44 +196,78 @@ abstract class OidcMethod implements Method {
 	}
 
 	public function finish( array $input ): Outcome {
+		try {
+			$profile = $this->verify( $input );
+		} catch ( \RuntimeException $e ) {
+			return Outcome::failure( $e->getMessage() );
+		}
+
+		return Identities::resolve( $this->id(), $profile );
+	}
+
+	/**
+	 * Connects this provider to somebody who is already signed in.
+	 *
+	 * The same verification as a sign-in, and then deliberately not the same
+	 * decision: the account is the one holding the session, never one looked up
+	 * by address. There is no path from here into Identities::resolve(), which
+	 * is the point — the caller has already proved who they are with a
+	 * credential this site issued, so the provider's word about an address is
+	 * not needed and is not consulted.
+	 */
+	public function completeLink( int $userId, array $input ): Outcome {
+		try {
+			$profile = $this->verify( $input );
+		} catch ( \RuntimeException $e ) {
+			return Outcome::failure( $e->getMessage() );
+		}
+
+		return Identities::attach( $userId, $this->id(), $profile );
+	}
+
+	/**
+	 * Checks everything the provider sent back and returns who it says this is.
+	 *
+	 * Shared by signing in and linking so the two cannot drift: a check added
+	 * for one is a check the other gets. What differs between them is only what
+	 * is done with the answer.
+	 *
+	 * @throws \RuntimeException With a message fit to show somebody.
+	 */
+	private function verify( array $input ): Profile {
 		$stored = $_SESSION['oidc'][ $this->id() ] ?? null;
 
 		// One shot. Whatever happens below, this attempt is now spent.
 		unset( $_SESSION['oidc'][ $this->id() ] );
 
 		if ( ! is_array( $stored ) ) {
-			return Outcome::failure( 'That sign-in took too long, or was started in another window. Please try again.' );
+			throw new \RuntimeException( 'That sign-in took too long, or was started in another window. Please try again.' );
 		}
 
 		// Fifteen minutes is generous for a redirect and a password box.
 		if ( time() - (int) ( $stored['at'] ?? 0 ) > 900 ) {
-			return Outcome::failure( 'That sign-in took too long. Please try again.' );
+			throw new \RuntimeException( 'That sign-in took too long. Please try again.' );
 		}
 
 		if ( '' !== (string) ( $input['error'] ?? '' ) ) {
-			return Outcome::failure( $this->describeProviderError( $input ) );
+			throw new \RuntimeException( $this->describeProviderError( $input ) );
 		}
 
 		if ( $this->echoesState() && ! hash_equals( (string) $stored['state'], (string) ( $input['state'] ?? '' ) ) ) {
-			return Outcome::failure( 'That sign-in could not be matched to this browser. Please try again.' );
+			throw new \RuntimeException( 'That sign-in could not be matched to this browser. Please try again.' );
 		}
 
 		$code = (string) ( $input['code'] ?? '' );
 
 		if ( '' === $code ) {
-			return Outcome::failure( $this->label() . ' did not send a sign-in code.' );
+			throw new \RuntimeException( $this->label() . ' did not send a sign-in code.' );
 		}
 
-		try {
-			$tokens  = $this->exchange( $code, (string) $stored['verifier'] );
-			$profile = self::PROFILE_USERINFO === $this->profileSource()
-				? $this->profileFromUserinfo( $tokens )
-				: $this->profileFromIdToken( $tokens, (string) $stored['nonce'] );
-		} catch ( \RuntimeException $e ) {
-			return Outcome::failure( $e->getMessage() );
-		}
+		$tokens = $this->exchange( $code, (string) $stored['verifier'] );
 
-		return Identities::resolve( $this->id(), $profile );
+		return self::PROFILE_USERINFO === $this->profileSource()
+			? $this->profileFromUserinfo( $tokens )
+			: $this->profileFromIdToken( $tokens, (string) $stored['nonce'] );
 	}
 
 	/**

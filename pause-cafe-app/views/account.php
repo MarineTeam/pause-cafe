@@ -104,6 +104,70 @@ $showWallet = \PauseCafe\Payments::isEnabled( 'wallet' ) || $entries;
 
 <?php endif; ?>
 
+<?php if ( $linked || $connectable ) : ?>
+	<h2>How you sign in</h2>
+
+	<div class="panel">
+		<?php if ( $linked ) : ?>
+			<p class="muted">Accounts elsewhere that you can sign in with.</p>
+
+			<table>
+				<tbody>
+					<?php foreach ( $linked as $link ) : ?>
+						<tr>
+							<td>
+								<strong><?= e( \PauseCafe\SignIn::label( (string) $link['provider'] ) ) ?></strong><br>
+								<span class="muted"><?= e( $link['email'] ) ?></span>
+							</td>
+							<td class="num">
+								<?php
+								/*
+								 * Disconnecting the last one is the quiet way to lock
+								 * yourself out, and it is easiest for the people it
+								 * hurts most -- somebody who has never had a password
+								 * and signs in only this way. The server refuses it
+								 * too; this only saves them the trip.
+								 */
+								$onlyWayIn = \PauseCafe\Identities::waysInWithout( (int) $user['id'], (int) $link['id'] ) < 1;
+								?>
+
+								<?php if ( $onlyWayIn ) : ?>
+									<span class="muted">Your only way in</span>
+								<?php else : ?>
+									<form method="post" action="/account/unlink" class="inline"
+										onsubmit="return confirm('Disconnect this? You will need another way to sign in.')">
+										<?= Csrf::field() ?>
+										<input type="hidden" name="id" value="<?= (int) $link['id'] ?>">
+										<button type="submit" class="link-button">Disconnect</button>
+									</form>
+								<?php endif; ?>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+		<?php endif; ?>
+
+		<?php if ( $connectable ) : ?>
+			<p class="muted">
+				<?= $linked ? 'You can add another.' : 'Connect one and you can sign in with it instead of a password.' ?>
+				Because you are signed in already, this joins it to <strong>this</strong> account —
+				the address there does not have to match the one here.
+			</p>
+
+			<?php foreach ( $connectable as $id => $method ) : ?>
+				<?php // A POST, so nobody can walk you through connecting their account to yours. ?>
+				<form method="post" action="/account/link/<?= e( $id ) ?>" class="inline">
+					<?= Csrf::field() ?>
+					<button type="submit" class="button button--quiet">
+						Connect <?= e( $method->label() ) ?>
+					</button>
+				</form>
+			<?php endforeach; ?>
+		<?php endif; ?>
+	</div>
+<?php endif; ?>
+
 <h2>Change password</h2>
 
 <form method="post" action="/account/password" class="form-narrow">

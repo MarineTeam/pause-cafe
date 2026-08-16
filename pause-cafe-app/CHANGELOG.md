@@ -23,6 +23,18 @@ Notable changes to the standalone app. Dates are the day the change landed on
   approve; accounts with nothing to take still link immediately. Reported by a
   security audit.
 
+### Added
+
+- **Connect a provider to your own account**, from Your account → How you sign
+  in, without waiting for an organiser — and disconnect it again. What
+  authorises the link is being signed in already, not the provider's word about
+  an address, so the address there need not match the one here or even be
+  confirmed. It refuses a provider account already linked to somebody else,
+  needs a POST behind a CSRF token so nobody can walk a signed-in member through
+  connecting *their* provider account, and stops rather than guessing if the
+  session has changed by the time the provider sends them back. Disconnecting
+  the last remaining way in is refused.
+
 ### Changed
 
 - An organiser's own first external sign-in is held for approval like anyone

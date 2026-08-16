@@ -17,6 +17,7 @@ use PauseCafe\Cart;
 use PauseCafe\Csrf;
 use PauseCafe\Database;
 use PauseCafe\Groups;
+use PauseCafe\Identities;
 use PauseCafe\Kitchen;
 use PauseCafe\LoginAttempts;
 use PauseCafe\LoginTokens;
@@ -408,6 +409,51 @@ $router->get(
 			View::redirect( '/login' );
 		}
 
+		/*
+		 * Was this started from the account page to connect a provider, or from
+		 * the login page to get in? The intent is read and spent here, before
+		 * anything else, so a stale one cannot colour a later sign-in.
+		 *
+		 * It is kept by the route rather than by the method because this is the
+		 * fork in the road, and only one of the two branches is allowed to
+		 * decide who somebody is from an email address. Keeping them apart here
+		 * means a linking flow has no way to reach that code at all.
+		 */
+		$intent = $_SESSION['link_intent'] ?? null;
+		unset( $_SESSION['link_intent'] );
+
+		if ( is_array( $intent ) && $provider === (string) ( $intent['provider'] ?? '' ) ) {
+			$method = SignIn::resolve( $provider );
+
+			if ( ! $method instanceof \PauseCafe\SignIn\Linkable ) {
+				View::flash( 'error', 'That way of signing in cannot be connected to an account.' );
+				View::redirect( '/account' );
+			}
+
+			/*
+			 * Fail closed. The person who comes back must be the same signed-in
+			 * person who set out -- not a guest, and not somebody who signed in
+			 * as someone else in another tab while the provider had them. There
+			 * is deliberately no fallback here: if the session is not what it
+			 * was, the answer is no, never "work out who this is instead".
+			 */
+			if ( ! Auth::check() || Auth::id() !== (int) ( $intent['user'] ?? 0 ) ) {
+				View::flash( 'error', 'You were signed out while that was going on, so nothing was connected. Please sign in and try again.' );
+				View::redirect( '/login' );
+			}
+
+			$outcome = $method->completeLink( Auth::id(), $_GET );
+
+			View::flash(
+				Outcome::FAILURE === $outcome->kind() ? 'error' : 'success',
+				Outcome::OK === $outcome->kind()
+					? SignIn::label( $provider ) . ' is connected. You can sign in with it from now on.'
+					: $outcome->message()
+			);
+
+			View::redirect( '/account' );
+		}
+
 		$finishSignIn( SignIn::resolve( $provider )->finish( $_GET ) );
 	}
 );
@@ -744,15 +790,119 @@ $router->get(
 	static function () use ( $requireLogin ): void {
 		$requireLogin();
 
+		/*
+		 * Providers they could connect: available, linkable, and not already
+		 * theirs. A method they are on stays out of the list because the row
+		 * for it is right above, with a Disconnect on it.
+		 */
+		$linked   = Identities::forUser( Auth::id() );
+		$already  = array_column( $linked, 'provider' );
+		$loose    = array();
+
+		foreach ( SignIn::available() as $id => $method ) {
+			if ( $method instanceof \PauseCafe\SignIn\Linkable && ! in_array( $id, $already, true ) ) {
+				$loose[ $id ] = $method;
+			}
+		}
+
 		echo View::render(
 			'account',
 			array(
-				'title'   => 'Your account',
-				'balance' => Wallet::balance( Auth::id() ),
-				'entries' => Wallet::entries( Auth::id() ),
-				'orders'  => Orders::forUser( Auth::id() ),
+				'title'      => 'Your account',
+				'balance'    => Wallet::balance( Auth::id() ),
+				'entries'    => Wallet::entries( Auth::id() ),
+				'orders'     => Orders::forUser( Auth::id() ),
+				'linked'     => $linked,
+				'connectable' => $loose,
 			)
 		);
+	}
+);
+
+/**
+ * Sets out to connect a provider to the account already signed in.
+ *
+ * A POST behind CSRF on purpose. If a link could be started by following a
+ * link, somebody could walk a signed-in member through connecting the
+ * attacker's provider account to theirs — which hands over a permanent way in,
+ * the same prize as the address hole, approached from the other side.
+ */
+$router->post(
+	'/account/link/{provider}',
+	static function ( string $provider ) use ( $requireLogin, $finishSignIn ): void {
+		$requireLogin();
+		Csrf::verify();
+
+		if ( ! SignIn::isAvailable( $provider ) ) {
+			View::flash( 'error', 'That way of signing in is not available.' );
+			View::redirect( '/account' );
+		}
+
+		$method = SignIn::resolve( $provider );
+
+		if ( ! $method instanceof \PauseCafe\SignIn\Linkable ) {
+			View::flash( 'error', 'That way of signing in cannot be connected to an account.' );
+			View::redirect( '/account' );
+		}
+
+		// Read and spent by the callback, and tied to this person so a session
+		// that changes underneath it fails rather than links the wrong account.
+		$_SESSION['link_intent'] = array(
+			'provider' => $provider,
+			'user'     => Auth::id(),
+			'at'       => time(),
+		);
+
+		$outcome = $method->start( array() );
+
+		/*
+		 * A provider that cannot be reached never sends anybody back, so the
+		 * intent would sit in the session waiting to colour some later
+		 * callback. Cleared here, and they land back on the account page they
+		 * pressed the button on rather than at the login screen.
+		 */
+		if ( Outcome::REDIRECT !== $outcome->kind() ) {
+			unset( $_SESSION['link_intent'] );
+		}
+
+		$finishSignIn( $outcome, '/account' );
+	}
+);
+
+$router->post(
+	'/account/unlink',
+	static function () use ( $requireLogin ): void {
+		$requireLogin();
+		Csrf::verify();
+
+		$id   = (int) ( $_POST['id'] ?? 0 );
+		$mine = null;
+
+		foreach ( Identities::forUser( Auth::id() ) as $link ) {
+			if ( (int) $link['id'] === $id ) {
+				$mine = $link;
+			}
+		}
+
+		// Only ever your own, and never by guessing an id.
+		if ( ! $mine ) {
+			View::flash( 'error', 'That is not connected to your account.' );
+			View::redirect( '/account' );
+		}
+
+		if ( Identities::waysInWithout( Auth::id(), $id ) < 1 ) {
+			View::flash(
+				'error',
+				'That is your only way of signing in, so it has been left alone. '
+				. 'Set a password first, or ask an organiser.'
+			);
+			View::redirect( '/account' );
+		}
+
+		Identities::unlink( $id );
+
+		View::flash( 'success', SignIn::label( (string) $mine['provider'] ) . ' is no longer connected.' );
+		View::redirect( '/account' );
 	}
 );
 
