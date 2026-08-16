@@ -15,6 +15,16 @@ class Orders {
 	public const STATUS_CONFIRMED = 'confirmed';
 	public const STATUS_CANCELLED = 'cancelled';
 
+	/**
+	 * On its way out, and out of everything in the meantime.
+	 *
+	 * A status rather than a flag beside one, so the cook list, the amount
+	 * still owed and the portions left all drop it without being told to --
+	 * every one of them already asks for confirmed orders. Restoring puts back
+	 * whatever it was, which is kept in restore_status.
+	 */
+	public const STATUS_TRASHED = 'trashed';
+
 	/*
 	 * SQLite only takes a write lock up front with BEGIN IMMEDIATE, which PDO
 	 * cannot issue through beginTransaction(). Driving it with exec() means PDO
@@ -285,6 +295,134 @@ class Orders {
 
 			throw $e;
 		}
+	}
+
+	/* ---------------------------------------------------------------------
+	 * Trash, restore, and deleting for good
+	 * ------------------------------------------------------------------ */
+
+	/**
+	 * Moves an order out of the way without destroying it.
+	 *
+	 * Deliberately does not touch money. Cancelling is what gives money back,
+	 * and an organiser who wants both should cancel first — trashing quietly
+	 * refunding people would make emptying the trash a financial act performed
+	 * by tidying up.
+	 *
+	 * @throws \RuntimeException
+	 */
+	public static function trash( int $orderId ): void {
+		$order = self::find( $orderId );
+
+		if ( ! $order ) {
+			throw new \RuntimeException( 'That order does not exist.' );
+		}
+
+		if ( self::STATUS_TRASHED === $order['status'] ) {
+			return;
+		}
+
+		$statement = Database::pdo()->prepare(
+			'UPDATE orders SET restore_status = status, status = ? WHERE id = ?'
+		);
+
+		$statement->execute( array( self::STATUS_TRASHED, $orderId ) );
+	}
+
+	/** Puts it back as whatever it was before. */
+	public static function restore( int $orderId ): void {
+		$order = self::find( $orderId );
+
+		if ( ! $order || self::STATUS_TRASHED !== $order['status'] ) {
+			return;
+		}
+
+		$was = (string) $order['restore_status'];
+
+		if ( ! in_array( $was, array( self::STATUS_CONFIRMED, self::STATUS_CANCELLED ), true ) ) {
+			$was = self::STATUS_CONFIRMED;
+		}
+
+		$statement = Database::pdo()->prepare(
+			"UPDATE orders SET status = ?, restore_status = '' WHERE id = ?"
+		);
+
+		$statement->execute( array( $was, $orderId ) );
+	}
+
+	/**
+	 * Removes an order and every trace of its money, for good.
+	 *
+	 * This is not cancelling. Cancelling says the order happened and was undone,
+	 * and leaves both halves on the record. This says it never happened — which
+	 * is only ever true of something put there while testing, and is why it can
+	 * be reached solely from the trash.
+	 *
+	 * The wallet entries go with it. Leaving them would be worse than either
+	 * option: money movements pointing at an order that cannot be opened,
+	 * turning up in a statement months later with nothing to explain them. Lines
+	 * and adjustments cascade from the order itself.
+	 *
+	 * Whatever was charged therefore comes back to the balance, because it is
+	 * being unwound rather than refunded. The running totals stored against the
+	 * remaining entries are rewritten, or the statement below the gap would
+	 * carry on from a number that no longer follows.
+	 *
+	 * @throws \RuntimeException When the order is not in the trash.
+	 */
+	public static function purge( int $orderId ): void {
+		$order = self::find( $orderId );
+
+		if ( ! $order ) {
+			throw new \RuntimeException( 'That order does not exist.' );
+		}
+
+		if ( self::STATUS_TRASHED !== $order['status'] ) {
+			throw new \RuntimeException( 'Only an order in the trash can be deleted for good.' );
+		}
+
+		$userId = (int) $order['user_id'];
+		$pdo    = Database::pdo();
+
+		self::begin( $pdo );
+
+		try {
+			/*
+			 * Every reference this order ever wrote: the charge, the
+			 * cancellation refund, and one per adjustment.
+			 */
+			$pdo->prepare(
+				'DELETE FROM wallet_entries
+				 WHERE user_id = ? AND (reference = ? OR reference = ? OR reference LIKE ?)'
+			)->execute(
+				array( $userId, 'order:' . $orderId, 'refund:' . $orderId, 'adjust:' . $orderId . ':%' )
+			);
+
+			$pdo->prepare( 'DELETE FROM orders WHERE id = ?' )->execute( array( $orderId ) );
+
+			Wallet::recompute( $userId );
+
+			self::commit( $pdo );
+		} catch ( \Throwable $e ) {
+			self::rollback( $pdo );
+
+			throw $e;
+		}
+	}
+
+	/**
+	 * Orders in the trash, newest first.
+	 *
+	 * @return array[]
+	 */
+	public static function trashed(): array {
+		return Database::pdo()->query(
+			"SELECT o.*, u.name AS user_name, u.email AS user_email
+			 FROM orders o
+			 INNER JOIN users u ON u.id = o.user_id
+			 WHERE o.status = '" . self::STATUS_TRASHED . "'
+			 ORDER BY o.id DESC"
+		)->fetchAll();
 	}
 
 	/**
@@ -638,6 +776,10 @@ class Orders {
 			throw new \RuntimeException( 'That order does not exist.' );
 		}
 
+		if ( self::STATUS_TRASHED === $order['status'] ) {
+			throw new \RuntimeException( 'That order is in the trash. Restore it before changing anything on it.' );
+		}
+
 		if ( 'cancelled' === $order['status'] ) {
 			throw new \RuntimeException( 'That order is cancelled. Nothing more can be changed on it.' );
 		}
@@ -769,8 +911,13 @@ class Orders {
 	 * @return array[]
 	 */
 	public static function forUser( int $userId, int $limit = 50 ): array {
+		// Trashed orders are gone as far as the member is concerned. They can
+		// see a cancellation, which is something that happened to them; an order
+		// an organiser is in the middle of removing is not.
 		$statement = Database::pdo()->prepare(
-			'SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT ?'
+			"SELECT * FROM orders
+			 WHERE user_id = ? AND status != '" . self::STATUS_TRASHED . "'
+			 ORDER BY id DESC LIMIT ?"
 		);
 
 		$statement->execute( array( $userId, $limit ) );
@@ -797,9 +944,12 @@ class Orders {
 	 * @return string[] Ascending.
 	 */
 	public static function serviceDates(): array {
+		// A date whose only orders are in the trash is not a date anybody needs
+		// on a picker.
 		$rows = Database::pdo()->query(
 			"SELECT DISTINCT service_date FROM orders
-			 WHERE service_date != '' ORDER BY service_date ASC"
+			 WHERE service_date != '' AND status != '" . self::STATUS_TRASHED . "'
+			 ORDER BY service_date ASC"
 		)->fetchAll();
 
 		return array_map( static fn( array $row ): string => (string) $row['service_date'], $rows );
@@ -853,6 +1003,11 @@ class Orders {
 		if ( '' !== $status ) {
 			$sql     .= ' AND o.status = ?';
 			$params[] = $status;
+		} else {
+			// "Both" means confirmed and cancelled. The trash is its own screen,
+			// and an order on its way out should not turn up in a list somebody
+			// is working through.
+			$sql .= " AND o.status != '" . self::STATUS_TRASHED . "'";
 		}
 
 		$statement = Database::pdo()->prepare( $sql . ' ORDER BY o.id' );

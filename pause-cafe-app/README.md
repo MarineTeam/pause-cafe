@@ -417,6 +417,56 @@ already been sold turns it into a draft rather than removing it, so the orders
 keep pointing somewhere. The date stays on every organiser screen even though
 nothing published remains on it, and the Orders page names the dish so you are
 not left hunting for something that is no longer on the menu.
+## Closing accounts, and deleting things
+
+**Closing an account is not deleting it, and that is the point.**
+`wallet_entries` and `orders` both cascade from `users`, so removing the row
+took the ledger and every order with it — money collected through Zeffy, refunds
+given, amounts still owed, gone at once with nothing left to reconcile against.
+
+**Organiser → People → Close account** stops them signing in and keeps
+everything they did. It takes away their provider links and any sign-in link
+already in their inbox, and it bites on the next request rather than whenever
+the session happens to lapse. Reopening puts it back.
+
+**Delete for good** is offered only where there is genuinely nothing to lose —
+no orders, no wallet history. A spam registration or an account made while
+testing can go outright; anything with money behind it cannot, and the model
+refuses it rather than trusting the screen to hide the button.
+
+### The order trash
+
+**Move to trash** takes an order out of the cook list, out of what is still to
+collect, and out of the portions it was holding. It is on the orders screen, in
+bulk, and the trash is its own screen spanning every date.
+
+**Trashing moves no money.** Cancelling is what gives money back. An organiser
+who wants both should cancel first — trashing quietly refunding people would
+make emptying the trash a financial act performed by tidying up.
+
+**Delete for good**, from the trash only, is for orders put there while testing.
+It is a different thing from cancelling:
+
+| | What it says | What it leaves |
+| --- | --- | --- |
+| **Cancel** | It happened, and was undone | The order, the refund, both on the record |
+| **Delete for good** | It never happened | Nothing — and whatever was charged returns to the balance |
+
+The wallet entries go with the order. Leaving them would be worse than either
+option: money movements pointing at an order nobody can open, turning up in a
+statement months later with nothing to explain them. The running total printed
+beside each remaining entry is rewritten afterwards, or the statement below the
+gap would carry on from a figure that no longer follows.
+
+Trashing is done by moving the order's **status**, not by a flag beside it, so
+every query that already asks for confirmed orders drops it without being
+changed. Restoring puts back whatever it was — a cancelled order comes back
+cancelled.
+
+An account whose only orders have been deleted for good becomes deletable again,
+which is what makes clearing up after a run-through possible. A top-up on its
+own still protects it: money arrived from somewhere and something has to say so.
+
 ## Editing an order
 
 **Orders → Edit** changes an order that has already been placed, rather than
@@ -613,9 +663,10 @@ php -d extension=php_pdo_sqlite tests/test-design.php            #  67 assertion
 php -d extension=php_pdo_sqlite tests/test-orders-admin.php      #  28 assertions
 php -d extension=php_pdo_sqlite tests/test-order-edits.php       #  76 assertions
 php -d extension=php_pdo_sqlite tests/test-menu-flexibility.php  #  18 assertions
+php -d extension=php_pdo_sqlite tests/test-deletion.php          #  61 assertions
 ```
 
-All of them run against a throwaway database and need no server. 772 in total.
+All of them run against a throwaway database and need no server. 833 in total.
 
 The HTTP layer — sessions, CSRF, approval gating, checkout, the side cart,
 access control — has its own end-to-end run against a live server:

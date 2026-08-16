@@ -76,6 +76,10 @@ foreach ( $orders as $orderRow ) {
 	<div style="align-self:end">
 		<a class="button" href="/admin/orders/new?date=<?= e( urlencode( $serviceDate ) ) ?>">Order for someone</a>
 	</div>
+	<div style="align-self:end">
+		<?php // Its own screen, not a filter: the trash spans every date. ?>
+		<a class="button button--quiet" href="/admin/orders/trash">Trash<?= $trashCount ? ' (' . (int) $trashCount . ')' : '' ?></a>
+	</div>
 </form>
 
 <?php if ( ! $orders ) : ?>
@@ -193,6 +197,18 @@ foreach ( $orders as $orderRow ) {
 					<button type="submit" name="action" value="resend" class="button button--quiet">Resend confirmation</button>
 				</div>
 				<div>
+					<?php
+					/*
+					 * Trashing moves no money on purpose, and says so, because
+					 * "move to trash" reads like tidying up rather than like a
+					 * refund. Cancelling is what gives money back.
+					 */
+					?>
+					<button type="submit" name="action" value="trash" class="button button--quiet"
+						onclick="return confirm('Move every ticked order to the trash? Nothing is refunded — cancel first if money should go back.')">
+						Move to trash
+					</button>
+
 					<?php // Moves money, so it asks -- and says how much before it does. ?>
 					<button type="submit" name="action" value="cancel" class="button button--danger"
 						onclick="return confirm('Cancel every ticked order? Wallet payments are refunded and everyone affected is emailed.')">

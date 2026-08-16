@@ -12,6 +12,15 @@ Notable changes to the standalone app. Dates are the day the change landed on
 
 ### Security
 
+- **Deleting a member destroyed the money as well as the account.**
+  `wallet_entries.user_id` and `orders.user_id` both cascade from `users` with
+  foreign keys on, so `DELETE FROM users` removed the person, every order they
+  had placed, and the whole of their ledger — including money collected through
+  Zeffy. The screen said so out loud: "Account deleted, along with its orders
+  and ledger." Accounts are now closed instead, keeping everything they did, and
+  can only be deleted outright where there is nothing to lose. Reported by a
+  security audit.
+
 - **An external provider could hand over an existing account on a confirmed
   address alone.** The first sign-in through a provider has no subject to match
   on, so only the address was left, and a match linked and signed in on the
@@ -25,6 +34,19 @@ Notable changes to the standalone app. Dates are the day the change landed on
 
 ### Added
 
+- **An order trash.** Move to trash takes an order out of the cook list, out of
+  what is still to collect, and out of the portions it held, without destroying
+  it or moving any money — cancelling is still what gives money back. From the
+  trash it can be restored, coming back as whatever it was, or deleted for good.
+- **Deleting an order for good**, which is not cancelling: cancelling says it
+  happened and was undone, this says it never happened. Meant for orders put
+  there while testing. The wallet entries go with the order rather than being
+  left pointing at something nobody can open, whatever was charged returns to
+  the balance, and the running total beside each remaining ledger entry is
+  rewritten so the statement still adds up.
+- **Accounts with no orders and no wallet history can still be deleted
+  outright** — a spam registration, or something made while testing. Clearing an
+  account's test orders from the trash makes it deletable again.
 - **Connect a provider to your own account**, from Your account → How you sign
   in, without waiting for an organiser — and disconnect it again. What
   authorises the link is being signed in already, not the provider's word about

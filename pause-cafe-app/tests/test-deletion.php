@@ -178,4 +178,187 @@ check( 'and any sign-in link', $tokensFor( $spam ), 0 );
 // Deleting cannot touch anybody else's history on the way past.
 check( 'the member beside it is untouched', count( Wallet::entries( $member ) ), 2 );
 
+/* =========================================================================
+ * Orders: trash, restore, and deleting for good
+ *
+ * Two different things that both sound like removing an order. Cancelling says
+ * it happened and was undone, gives the money back, and leaves both halves on
+ * the record. Deleting says it never happened, which is only ever true of
+ * something put there while testing -- so it is reachable only from the trash,
+ * and it takes the wallet entries with it rather than leaving movements
+ * pointing at an order nobody can open.
+ * ====================================================================== */
+
+echo "\nTrashing takes an order out of everything, and moves no money\n";
+
+$scarce = Menu::save(
+	array(
+		'location_id'  => 1,
+		'name'         => 'Scarce stew',
+		'price_cents'  => 800,
+		'service_date' => '2026-09-13',
+		'open_from'    => '2026-01-01 00:00:00',
+		'close_at'     => '2027-01-01 00:00:00',
+		'status'       => 'published',
+		'capacity'     => 2,
+	)
+);
+
+$diner = Users::create( 'diner@example.org', 'a-good-password', 'Dee Diner', '', Users::ROLE_MEMBER, true );
+
+Wallet::credit( $diner, 5000, Wallet::KIND_TOPUP, 'float' );
+
+$order = Orders::place( $diner, array( array( 'item_id' => $scarce, 'qty' => 2 ) ) );
+
+check( 'the portions are taken', Menu::item( $scarce )['remaining'], 0 );
+check( 'and the money with them', Wallet::balance( $diner ), 3400 );
+
+$spent = Wallet::balance( $diner );
+
+Orders::trash( $order );
+
+check( 'the order is in the trash', Orders::find( $order )['status'], Orders::STATUS_TRASHED );
+check( 'the portions come back', Menu::item( $scarce )['remaining'], 2 );
+check( 'it leaves the cook list', count( Orders::summaryForServiceDate( '2026-09-13' ) ), 0 );
+check( 'and the date picker', in_array( '2026-09-13', Orders::serviceDates(), true ), false );
+check( 'the member no longer sees it', count( Orders::forUser( $diner ) ), 0 );
+check( 'nor does "both"', count( Orders::forServiceDate( '2026-09-13', '' ) ), 0 );
+check( 'but it is in the trash screen', count( Orders::trashed() ), 1 );
+
+// The point of keeping it separate from cancelling.
+check( 'and no money moved', Wallet::balance( $diner ), $spent );
+
+check_throws(
+	'a trashed order cannot be edited',
+	static fn() => Orders::refundAmount( $order, 100, 'Nope', null ),
+	'trash'
+);
+
+echo "\nRestoring puts it back as it was\n";
+
+Orders::restore( $order );
+
+check( 'confirmed again', Orders::find( $order )['status'], Orders::STATUS_CONFIRMED );
+check( 'holding its portions', Menu::item( $scarce )['remaining'], 0 );
+check( 'back on the cook list', count( Orders::summaryForServiceDate( '2026-09-13' ) ) > 0, true );
+check( 'and the member sees it again', count( Orders::forUser( $diner ) ), 1 );
+
+// A cancelled order that goes to the trash comes back cancelled, not alive.
+$cancelled = Orders::place( $diner, array( array( 'item_id' => $dish, 'qty' => 1 ) ) );
+
+Orders::cancel( $cancelled, null );
+Orders::trash( $cancelled );
+Orders::restore( $cancelled );
+
+check( 'a cancelled order restores as cancelled', Orders::find( $cancelled )['status'], Orders::STATUS_CANCELLED );
+
+echo "\nDeleting for good only works from the trash\n";
+
+check_throws(
+	'a live order cannot be deleted',
+	static fn() => Orders::purge( $order ),
+	'trash'
+);
+
+check( 'and it is still there', null !== Orders::find( $order ), true );
+
+echo "\nAnd it takes the money movements with it\n";
+
+$before  = Wallet::balance( $diner );
+$entries = count( Wallet::entries( $diner ) );
+
+// Give this one a history worth removing: part of it refunded first.
+Orders::refundAmount( $order, 300, 'Cold', null );
+
+check( 'the refund lands', Wallet::balance( $diner ), $before + 300 );
+
+Orders::trash( $order );
+Orders::purge( $order );
+
+check( 'the order is gone', Orders::find( $order ), null );
+check( 'its charge and its refund went with it', count( Wallet::entries( $diner ) ), $entries - 1 );
+
+/*
+ * The charge was 1600 and 300 of it had already come back, so unwinding the
+ * whole thing leaves the member 1300 better off than they were a moment ago --
+ * and exactly where they stood before the order existed.
+ */
+check( 'and the balance is as if it never happened', Wallet::balance( $diner ), $before + 1600 );
+
+// Nothing may be left pointing at an order that cannot be opened.
+$orphans = Database::pdo()->prepare(
+	"SELECT COUNT(*) FROM wallet_entries WHERE reference LIKE ? OR reference = ? OR reference = ?"
+);
+
+$orphans->execute( array( 'adjust:' . $order . ':%', 'order:' . $order, 'refund:' . $order ) );
+
+check( 'with no stray entries left behind', (int) $orphans->fetchColumn(), 0 );
+
+check(
+	'the lines went too',
+	(int) Database::pdo()->query( 'SELECT COUNT(*) FROM order_lines WHERE order_id = ' . (int) $order )->fetchColumn(),
+	0
+);
+
+echo "\nThe running total beside each entry is rewritten\n";
+
+/*
+ * The balance is always the sum of the deltas, so it cannot be wrong. What can
+ * be wrong is the figure printed next to each line of a statement, worked out
+ * when the entry was written -- everything below a removed entry would carry on
+ * from a number that no longer follows.
+ */
+$running = 0;
+$wrong   = 0;
+
+foreach ( array_reverse( Wallet::entries( $diner ) ) as $entry ) {
+	$running += (int) $entry['delta_cents'];
+
+	if ( $running !== (int) $entry['balance_after_cents'] ) {
+		++$wrong;
+	}
+}
+
+check( 'every line still adds up', $wrong, 0 );
+check( 'ending on the real balance', $running, Wallet::balance( $diner ) );
+
+echo "\nAnd an account emptied of orders becomes deletable again\n";
+
+$tester = Users::create( 'tester@example.org', 'a-good-password', 'Tess Tester', '', Users::ROLE_MEMBER, true );
+
+// Cash on pickup, so the account has an order and no ledger at all -- the shape
+// a run-through leaves behind.
+$junk = Orders::place( $tester, array( array( 'item_id' => $dish, 'qty' => 1 ) ), null, '', false, 'cod' );
+
+check( 'while the test order stands, the account is protected', Users::isDeletable( $tester ), false );
+
+Orders::trash( $junk );
+
+check( 'trashing alone is not enough', Users::isDeletable( $tester ), false );
+
+Orders::purge( $junk );
+
+check( 'but deleting it for good is', Users::isDeletable( $tester ), true );
+
+Users::delete( $tester );
+
+check( 'so the account can go as well', Users::find( $tester ), null );
+
+/*
+ * The other way round: a top-up on its own still protects an account, even with
+ * no orders left. Money arrived from somewhere and something has to say so.
+ */
+$topped = Users::create( 'topped@example.org', 'a-good-password', 'Tom Topped', '', Users::ROLE_MEMBER, true );
+
+Wallet::credit( $topped, 2000, Wallet::KIND_TOPUP, 'Zeffy' );
+
+$paid = Orders::place( $topped, array( array( 'item_id' => $dish, 'qty' => 1 ) ) );
+
+Orders::trash( $paid );
+Orders::purge( $paid );
+
+check( 'the order is gone', Orders::find( $paid ), null );
+check( 'the top-up is not', count( Wallet::entries( $topped ) ), 1 );
+check( 'so the account still cannot be deleted', Users::isDeletable( $topped ), false );
+
 finish();
