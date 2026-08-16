@@ -191,6 +191,40 @@ An unconfirmed address still matches nothing at all and raises no claim, so
 there is nothing for an organiser to approve by mistake. Repeated attempts
 update the one claim rather than filling the screen.
 
+### Connecting a provider yourself
+
+**Your account → How you sign in → Connect.** Anyone already signed in can
+attach a provider without waiting for an organiser, and disconnect it again.
+
+This is not the address rule with the lock taken off, because the address is not
+what authorises it. You have already proved who you are with a credential this
+site issued, and the provider is only being written down as another way back —
+so the address there does not have to match the one here, which is the ordinary
+case for someone connecting a personal login to an account opened under a work
+address. It need not even be confirmed, since nothing is being decided from it.
+
+Somebody who takes over an address at a provider cannot use this: it needs a
+sign-in here, which is the very thing they were trying to get.
+
+Three things it will not do:
+
+- **Take a provider account that is already somebody else's here.** That would
+  remove their way in and hand it over. It refuses and points at an organiser.
+- **Start from a link.** Connecting is a POST behind a CSRF token, so nobody can
+  walk a signed-in member through attaching *the attacker's* provider account to
+  their account — the same prize as the address hole, approached from the other
+  side.
+- **Finish for anybody but the person who started it.** If the session is gone
+  or has become someone else by the time the provider sends them back, it stops.
+  There is no fallback to working out who they are from the address.
+
+**Disconnecting cannot lock you out.** The last remaining way in is refused, and
+a link to a provider that has since been switched off does not count as one.
+
+Organiser approval stays for the people this cannot help: somebody whose account
+an organiser created, who has never had a password and has never signed in, has
+nothing to authorise with.
+
 Note what this means for the rescue below: an organiser's **own** first external
 sign-in is held too, so proving the outside route works now means signing in,
 being held, having the link approved, and coming back.
@@ -574,14 +608,14 @@ kitchen report with print and CSV.
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php          #  51 assertions
 php -d extension=php_pdo_sqlite tests/test-app.php               # 352 assertions
-php -d extension=php_pdo_sqlite tests/test-signin.php            # 158 assertions
+php -d extension=php_pdo_sqlite tests/test-signin.php            # 180 assertions
 php -d extension=php_pdo_sqlite tests/test-design.php            #  67 assertions
 php -d extension=php_pdo_sqlite tests/test-orders-admin.php      #  28 assertions
 php -d extension=php_pdo_sqlite tests/test-order-edits.php       #  76 assertions
 php -d extension=php_pdo_sqlite tests/test-menu-flexibility.php  #  18 assertions
 ```
 
-All of them run against a throwaway database and need no server. 750 in total.
+All of them run against a throwaway database and need no server. 772 in total.
 
 The HTTP layer — sessions, CSRF, approval gating, checkout, the side cart,
 access control — has its own end-to-end run against a live server:

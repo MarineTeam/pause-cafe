@@ -997,6 +997,160 @@ check( 'and it is an organiser who decides', count( Identities::pendingLinks() )
 
 Identities::declineLink( (int) Identities::pendingLinks()[0]['id'] );
 
+/* =========================================================================
+ * Connecting a provider to an account you are already signed in to
+ *
+ * The other half of the same problem, and the reason it is not the old hole
+ * wearing a hat: what authorises the link is a credential this site issued, not
+ * the provider's word about an address. Somebody who takes over an address at
+ * the provider still cannot sign in here, so this door is shut to them --
+ * signing in here is the very thing they were trying to achieve.
+ *
+ * The address plays no part at all, and the tests say so by using one that does
+ * not match.
+ * ====================================================================== */
+
+echo "\nLinking is authorised by the session, not by an address\n";
+
+$connector = Users::create( 'work@example.org', 'a-good-password', 'Cora Connector', '', Users::ROLE_MEMBER, true );
+
+Wallet::credit( $connector, 2500, Wallet::KIND_TOPUP, 'float' );
+
+check(
+	'this account would be held on a sign-in',
+	Identities::needsApproval( $connector ),
+	true
+);
+
+// A personal login, nothing like the address on the account.
+$joined = Identities::attach(
+	$connector,
+	'auth0',
+	new Profile( 'auth0|cora-personal', 'cora@personal.example', true, 'Cora Connector' )
+);
+
+check( 'connecting it works anyway', $joined->isAuthenticated(), true );
+check( 'because the address is not what decided it', (int) Identities::find( 'auth0', 'auth0|cora-personal' )['user_id'], $connector );
+check( 'the account keeps its own address', Users::find( $connector )['email'], 'work@example.org' );
+check( 'and nothing was parked for an organiser', count( Identities::pendingLinks() ), 0 );
+
+/*
+ * An unconfirmed address is fine here, where it is refused on the login page.
+ * That is not a relaxation: the address is not being used as evidence of
+ * anything, so there is nothing for the provider to confirm.
+ */
+$unconfirmed = Identities::attach(
+	$connector,
+	'supabase',
+	new Profile( 'supabase|cora', 'whatever@example.invalid', false, 'Cora' )
+);
+
+check( 'an unconfirmed address is no obstacle to linking', $unconfirmed->isAuthenticated(), true );
+
+echo "\nBut it cannot be used to take something\n";
+
+$victim = Users::create( 'victim@example.org', 'a-good-password', 'Vic Tim', '', Users::ROLE_MEMBER, true );
+
+Wallet::credit( $victim, 9900, Wallet::KIND_TOPUP, 'float' );
+
+// Cora tries to attach a provider account that is already somebody else's.
+Identities::attach( $victim, 'auth0', new Profile( 'auth0|vic', 'victim@example.org', true, 'Vic Tim' ) );
+
+$theft = Identities::attach( $connector, 'auth0', new Profile( 'auth0|vic', 'victim@example.org', true, 'Vic Tim' ) );
+
+check( 'a provider account already in use is refused', $theft->isAuthenticated(), false );
+check( 'and stays with whoever had it', (int) Identities::find( 'auth0', 'auth0|vic' )['user_id'], $victim );
+check( 'their money is untouched', Wallet::balance( $victim ), 9900 );
+
+// Connecting the same one twice is a no-op, not a second row.
+$twice = Identities::attach(
+	$connector,
+	'auth0',
+	new Profile( 'auth0|cora-personal', 'cora@personal.example', true, 'Cora Connector' )
+);
+
+check( 'connecting the same one again says so', Outcome::NOTICE, $twice->kind() );
+check( 'and does not add a second link', count( Identities::forUser( $connector ) ), 2 );
+
+check(
+	'linking cannot invent an account',
+	Identities::attach( 99999, 'auth0', new Profile( 'auth0|ghost', 'ghost@example.org', true, 'Ghost' ) )->isAuthenticated(),
+	false
+);
+
+echo "\nAnd self-service settles a claim that was waiting\n";
+
+$waiter = Users::create( 'waiter@example.org', 'a-good-password', 'Will Waiter', '', Users::ROLE_MEMBER, true );
+
+Wallet::credit( $waiter, 1000, Wallet::KIND_TOPUP, 'float' );
+
+Identities::resolve( 'auth0', new Profile( 'auth0|will', 'waiter@example.org', true, 'Will Waiter' ) );
+
+check( 'the sign-in was held', count( Identities::pendingLinks() ), 1 );
+
+// Will gives up waiting, signs in with his password, and connects it himself.
+Identities::attach( $waiter, 'auth0', new Profile( 'auth0|will', 'waiter@example.org', true, 'Will Waiter' ) );
+
+check( 'doing it himself clears the claim', count( Identities::pendingLinks() ), 0 );
+check( 'and he is linked', (int) Identities::find( 'auth0', 'auth0|will' )['user_id'], $waiter );
+
+echo "\nDisconnecting cannot leave somebody with no way in\n";
+
+Settings::setMany(
+	array(
+		'signin_password_enabled' => 'no',
+		'signin_magic_enabled'    => 'no',
+	)
+);
+
+$stranded = Users::createExternal( 'external@example.org', 'Only External' );
+
+Identities::attach( $stranded, 'auth0', new Profile( 'auth0|only', 'external@example.org', true, 'Only External' ) );
+
+$onlyLink = (int) Identities::forUser( $stranded )[0]['id'];
+
+check( 'with no password and nothing else on, that link is everything', Identities::waysInWithout( $stranded, $onlyLink ), 0 );
+
+// A second provider, but one that is switched on without being set up. A link
+// to a provider nobody can actually reach is not a way in, and counting it
+// would let somebody drop their real one and find out afterwards.
+Identities::attach( $stranded, 'supabase', new Profile( 'supabase|only', 'external@example.org', true, 'Only External' ) );
+
+check( 'a link to a provider that is not set up counts for nothing', Identities::waysInWithout( $stranded, $onlyLink ), 0 );
+
+Settings::setMany(
+	array(
+		'signin_supabase_url'      => 'https://abcdefgh.supabase.co',
+		'signin_supabase_anon_key' => 'anon-key',
+		'signin_supabase_provider' => 'google',
+	)
+);
+
+check( 'once it is set up, it does', Identities::waysInWithout( $stranded, $onlyLink ), 1 );
+
+// So does switching an emailed link back on, which needs nothing but the
+// address already on the account.
+Identities::unlink( (int) Identities::forUser( $stranded )[1]['id'] );
+
+check( 'back to one', Identities::waysInWithout( $stranded, $onlyLink ), 0 );
+
+Settings::set( 'signin_magic_enabled', 'yes' );
+
+check( 'and sign-in links count for everybody', Identities::waysInWithout( $stranded, $onlyLink ), 1 );
+
+Settings::setMany(
+	array(
+		'signin_password_enabled' => 'yes',
+		'signin_magic_enabled'    => 'no',
+	)
+);
+
+check( 'a password only counts if they have one', Identities::waysInWithout( $stranded, $onlyLink ), 0 );
+
+Users::setPassword( $stranded, 'a-good-password' );
+
+check( 'once set, it does', Identities::waysInWithout( $stranded, $onlyLink ), 1 );
+
 if ( is_file( $logPath ) ) {
 	unlink( $logPath );
 }

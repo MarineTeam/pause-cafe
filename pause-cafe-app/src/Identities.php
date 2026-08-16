@@ -262,6 +262,112 @@ class Identities {
 	}
 
 	/**
+	 * Connects a provider to somebody who has already proved who they are.
+	 *
+	 * The counterpart to resolve(), and the difference is the whole reason both
+	 * exist. resolve() is asked "whose account is this?" and, first time out,
+	 * has only an address to go on. This is not asked that at all: the account
+	 * is the one holding the session, established by a credential this site
+	 * issued. The address is recorded for the organiser screen and decides
+	 * nothing — it does not even have to match the one on the account, which is
+	 * the ordinary case for somebody connecting a personal login to an account
+	 * opened under a work address.
+	 *
+	 * Nothing here can create an account or change a role.
+	 */
+	public static function attach( int $userId, string $provider, Profile $profile ): Outcome {
+		$user = Users::find( $userId );
+
+		if ( ! $user ) {
+			return Outcome::failure( 'That account could not be found. Please sign in again.' );
+		}
+
+		if ( '' === trim( $profile->subject ) ) {
+			return Outcome::failure( 'Your sign-in provider did not say who you are. Please try again.' );
+		}
+
+		$existing = self::find( $provider, $profile->subject );
+
+		if ( $existing ) {
+			if ( (int) $existing['user_id'] === $userId ) {
+				self::touch( (int) $existing['id'], $profile->email );
+
+				return Outcome::notice( 'That is already connected to your account.' );
+			}
+
+			/*
+			 * Somebody else here already signs in with it. Moving it would take
+			 * their way in away and hand it to whoever asked last, so it stays
+			 * where it is and an organiser can sort out which of the two
+			 * accounts is the real one.
+			 */
+			return Outcome::failure(
+				'That account is already connected to somebody else here. Please speak to an organiser.'
+			);
+		}
+
+		self::link( $userId, $provider, $profile->subject, $profile->email );
+
+		/*
+		 * They have just done for themselves what a claim was waiting on an
+		 * organiser to do. Leaving it on the screen would only invite somebody
+		 * to approve a link that already exists.
+		 */
+		self::forgetRequest( $provider, $profile->subject );
+
+		return Outcome::authenticated( $user );
+	}
+
+	/**
+	 * How many ways somebody would still have in without one of their links.
+	 *
+	 * Disconnecting the last one is the quiet way to lock yourself out, and it
+	 * is easiest for exactly the people it hurts most: somebody an organiser
+	 * created an account for, who has never had a password and signs in only
+	 * through a provider. A link they can undo in one click is the whole of
+	 * their access.
+	 *
+	 * A method that is switched off does not count, and neither does a password
+	 * they do not have.
+	 */
+	public static function waysInWithout( int $userId, int $identityId = 0 ): int {
+		$user = Users::find( $userId );
+
+		if ( ! $user ) {
+			return 0;
+		}
+
+		$ways = 0;
+
+		if ( SignIn::isAvailable( 'password' ) && Users::hasPassword( $user ) ) {
+			++$ways;
+		}
+
+		// An emailed link needs nothing but the address on the account, so it
+		// is a way in for everybody the moment it is switched on.
+		if ( SignIn::isAvailable( 'magic' ) ) {
+			++$ways;
+		}
+
+		foreach ( self::forUser( $userId ) as $link ) {
+			if ( (int) $link['id'] !== $identityId && SignIn::isAvailable( (string) $link['provider'] ) ) {
+				++$ways;
+			}
+		}
+
+		return $ways;
+	}
+
+	/** Drops any parked claim for one subject, however it was settled. */
+	public static function forgetRequest( string $provider, string $subject ): void {
+		$statement = Database::pdo()->prepare(
+			'DELETE FROM identity_link_requests WHERE provider = ? AND subject = ?'
+		);
+
+		$statement->execute( array( $provider, $subject ) );
+	}
+
+	/**
 	 * Turns a verified external profile into somebody who is signed in.
 	 *
 	 * The profile must already have been checked — a signature verified, a
