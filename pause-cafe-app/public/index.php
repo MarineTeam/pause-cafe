@@ -93,14 +93,13 @@ $router->post(
 		Csrf::verify();
 
 		try {
-			$id = Users::create(
-				$post( 'email' ),
-				$post( 'password' ),
-				$post( 'name' ),
-				'',
-				Users::ROLE_ADMIN,
-				true
-			);
+			/*
+			 * The check above is for a decent error page, not for safety. What
+			 * makes this happen once is inside: the write lock is taken before
+			 * the check is asked again, and the marker it writes is a primary
+			 * key the database will not accept twice.
+			 */
+			$id = Users::createFirstAdmin( $post( 'email' ), $post( 'password' ), $post( 'name' ) );
 
 			Auth::login( Users::find( $id ) );
 			View::flash( 'success', 'Welcome. Add this week\'s menu to get going.' );
@@ -1023,6 +1022,15 @@ $router->post(
 	'/kitchen/unlock',
 	static function () use ( $post ): void {
 		Csrf::verify();
+
+		// Asked before trying, only so the message is the true one. unlock()
+		// refuses on its own account either way.
+		$waitFor = Kitchen::lockedFor();
+
+		if ( $waitFor > 0 ) {
+			View::flash( 'error', LoginAttempts::message( $waitFor ) );
+			View::redirect( '/kitchen' );
+		}
 
 		if ( Kitchen::unlock( (string) ( $_POST['password'] ?? '' ) ) ) {
 			View::redirect( '/kitchen' );

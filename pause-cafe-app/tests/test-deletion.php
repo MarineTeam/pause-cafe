@@ -361,4 +361,100 @@ check( 'the order is gone', Orders::find( $paid ), null );
 check( 'the top-up is not', count( Wallet::entries( $topped ) ), 1 );
 check( 'so the account still cannot be deleted', Users::isDeletable( $topped ), false );
 
+/* =========================================================================
+ * First run happens once
+ *
+ * Setup checked for an organiser and then made one, and a COUNT is a question
+ * two requests can both get the old answer to. The window needs an untouched
+ * install, so it is narrow -- but what is on the other side of it is an admin
+ * account, which makes it worth closing properly rather than hoping.
+ * ====================================================================== */
+
+echo "\nSetup can only be done once\n";
+
+/*
+ * The connection is opened once and memoised, so a second fresh_database() here
+ * would hand back a path nothing is using. What first run actually depends on
+ * is two facts -- no marker, no organiser -- so those are what get put back,
+ * with a note saying so rather than pretending this is a virgin install.
+ */
+$reopenSetup = static function (): void {
+	$pdo = Database::pdo();
+
+	$pdo->prepare( 'DELETE FROM settings WHERE key = ?' )->execute( array( Database::SETUP_KEY ) );
+	$pdo->exec( "DELETE FROM users WHERE role = 'admin'" );
+};
+
+$reopenSetup();
+
+check( 'with no organiser and no marker, setup is offered', Database::needsSetup(), true );
+
+$first = Users::createFirstAdmin( 'first@example.org', 'a-good-password', 'First Organiser' );
+
+check( 'the first organiser is made', Users::find( $first )['role'], Users::ROLE_ADMIN );
+check( 'and approved, since nobody could approve them', (int) Users::find( $first )['is_approved'], 1 );
+check( 'setup is now shut', Database::needsSetup(), false );
+
+check_throws(
+	'and a second attempt is refused',
+	static fn() => Users::createFirstAdmin( 'second@example.org', 'a-good-password', 'Second' ),
+	'already been done'
+);
+
+check(
+	'so the second account was never made',
+	Users::findByEmail( 'second@example.org' ),
+	null
+);
+
+/*
+ * The marker is a primary key, which is what makes this a rule the database
+ * keeps rather than one the code remembers.
+ */
+check_throws(
+	'the marker cannot be written twice',
+	static function () {
+		Database::pdo()
+			->prepare( 'INSERT INTO settings (key, value) VALUES (?, ?)' )
+			->execute( array( Database::SETUP_KEY, 'again' ) );
+	},
+	'UNIQUE'
+);
+
+/*
+ * Closing every organiser account must not reopen setup. Otherwise anybody who
+ * arrived after a bad afternoon would be handed the site -- and the way back
+ * from that is tools/rescue.php, which needs the server rather than a browser.
+ */
+Users::disable( $first );
+
+check( 'a site with no active organiser still does not offer setup', Database::needsSetup(), false );
+
+/*
+ * A mistyped form must not close setup behind itself. The marker and the
+ * account are written together, so a rollback has to take both -- otherwise one
+ * short password would leave an install with setup shut and nobody able to sign
+ * in, which is a worse hole than the one being closed.
+ */
+$reopenSetup();
+
+Database::pdo()->prepare( 'DELETE FROM users WHERE email = ?' )->execute( array( 'first@example.org' ) );
+
+check( 'setup is open again', Database::needsSetup(), true );
+
+check_throws(
+	'a password too short is refused',
+	static fn() => Users::createFirstAdmin( 'first@example.org', 'short', 'First' ),
+	'8 characters'
+);
+
+check( 'and setup is still open afterwards', Database::needsSetup(), true );
+check( 'with no half-made organiser left behind', Users::findByEmail( 'first@example.org' ), null );
+
+check(
+	'so it can be done properly',
+	Users::find( Users::createFirstAdmin( 'first@example.org', 'a-good-password', 'First' ) )['role'],
+	Users::ROLE_ADMIN
+);
+
 finish();

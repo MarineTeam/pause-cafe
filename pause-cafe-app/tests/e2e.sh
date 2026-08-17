@@ -419,7 +419,49 @@ T=$(curl -s -b $K -c $K "$BASE/kitchen" | grep -o 'name="_token" value="[^"]*"' 
 curl -s -o /dev/null -b $K -c $K -X POST "$BASE/kitchen/unlock" -d "_token=$T" -d "password=kitchen-door"
 has "the right one does" "$(curl -s -b $K -c $K "$BASE/kitchen?range=all")" "BBQ pork on rice"
 
-rm -f "$K"
+# Guessing it is throttled. bcrypt's cost per guess was never a limit on the
+# number of guesses -- a hundred slow ones in parallel are a hundred fast ones,
+# and behind this page are names, groups and what each person is eating.
+G=$(mktemp)
+
+for i in 1 2 3 4 5; do
+  curl -s -o /dev/null -b $G -c $G -X POST "$BASE/kitchen/unlock" \
+    -d "_token=$(tok $G /kitchen)" -d "password=guess-$i"
+done
+
+# Posted, then the landing page fetched separately. -L is not usable here:
+# with -X POST curl re-sends the redirect as a POST too, and /kitchen only
+# answers GET, so the assertion would read a 405 rather than the flash.
+curl -s -o /dev/null -b $G -c $G -X POST "$BASE/kitchen/unlock" \
+  -d "_token=$(tok $G /kitchen)" -d "password=kitchen-door"
+
+HELD=$(curl -s -b $G -c $G "$BASE/kitchen")
+
+has "five wrong guesses buys a wait" "$HELD" "Too many"
+hasnt "and the right password does not get past it" "$HELD" "BBQ pork on rice"
+
+# Cleared, so nothing downstream inherits a locked kitchen.
+php -d extension=php_pdo_sqlite -r 'require "src/bootstrap.php"; PauseCafe\LoginAttempts::clearAll();' > /dev/null 2>&1
+
+curl -s -o /dev/null -b $G -c $G -X POST "$BASE/kitchen/unlock" \
+  -d "_token=$(tok $G /kitchen)" -d "password=kitchen-door"
+
+has "once cleared, the right password works" \
+  "$(curl -s -b $G -c $G "$BASE/kitchen?range=all")" "BBQ pork on rice"
+
+rm -f "$G" "$K"
+
+echo ""
+echo "Setup cannot be run twice"
+# The marker is a primary key, so the database refuses a second first-run even
+# if two requests somehow got past the check together.
+want "the setup page is gone once an organiser exists" "$(code /dev/null /setup)" "302"
+
+SECOND=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/setup" \
+  -d "_token=$(tok $A /admin)" -d "name=Second Admin" -d "email=second@example.org" -d "password=another-good-one")
+want "and posting to it anyway is turned away" "$SECOND" "302"
+
+hasnt "so no second organiser was made" "$(curl -s -b $A -c $A "$BASE/admin/users")" "second@example.org"
 
 echo ""
 echo "Correcting a dish somebody already ordered"

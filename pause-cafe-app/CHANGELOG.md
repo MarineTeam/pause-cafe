@@ -10,6 +10,24 @@ Notable changes to the standalone app. Dates are the day the change landed on
 
 ## Unreleased
 
+### Security
+
+- **Guessing the shared kitchen password was not rate limited.** The code said
+  as much: bcrypt's ~100ms per guess was "the only throttle here". A cost per
+  guess is not a limit on guesses — nothing stopped a hundred at once, and a
+  hundred slow guesses in parallel are a hundred fast ones. Behind that page are
+  the congregation's names, their groups and what each of them is eating. Five
+  wrong guesses from one machine now buys a fifteen-minute wait, counted per
+  source so one cook's typo cannot shut the kitchen out on a Sunday morning, and
+  refused in `Kitchen::unlock()` rather than only at the route.
+- **First-run setup could in principle have run twice.** It counted organisers
+  and then made one, and a count is a question two requests can both get the old
+  answer to. Setup now takes the write lock before it checks, and writes a
+  marker whose key is a primary key — so the database refuses a second
+  first-run rather than the code merely trying not to allow one. The marker also
+  means setup stays shut if every organiser account is later closed, which
+  `tools/rescue.php` is the way back from. Both reported by a security audit.
+
 ### Changed
 
 - **`Wallet::post()` opens an immediate transaction when it opens its own.** It

@@ -18,6 +18,7 @@ use PauseCafe\Cart;
 use PauseCafe\Database;
 use PauseCafe\Groups;
 use PauseCafe\Kitchen;
+use PauseCafe\LoginAttempts;
 use PauseCafe\Mail\LogTransport;
 use PauseCafe\Mail\Message;
 use PauseCafe\Mail\ResendTransport;
@@ -731,6 +732,63 @@ check( 'signing out revokes it', Kitchen::hasAccess(), false );
 
 Kitchen::setPassword( '' );
 check( 'clearing it goes back to organisers only', Kitchen::isProtected(), false );
+
+echo "\nAnd guessing it is throttled, which bcrypt was not doing\n";
+
+/*
+ * bcrypt's ~100ms per guess was the only thing slowing this down, and a cost
+ * per guess is not a limit on guesses -- a hundred slow ones in parallel are a
+ * hundred fast ones. Behind the page are the congregation's names, their groups
+ * and what each of them is eating.
+ */
+$_SERVER['REMOTE_ADDR'] = '198.51.100.7';
+
+LoginAttempts::clearAll();
+Kitchen::setPassword( 'kitchen-door-2026' );
+Kitchen::lock();
+
+check( 'nothing is held to begin with', Kitchen::lockedFor(), 0 );
+
+for ( $guess = 0; $guess < 5; $guess++ ) {
+	Kitchen::unlock( 'wrong-' . $guess );
+}
+
+check( 'five wrong guesses buys a wait', Kitchen::lockedFor() > 0, true );
+
+/*
+ * And the wait is what refuses, not the password check -- otherwise the limit
+ * would only cost an attacker the guesses they were going to waste anyway.
+ */
+check( 'after which even the right one is refused', Kitchen::unlock( 'kitchen-door-2026' ), false );
+check( 'so they are still outside', Kitchen::hasAccess(), false );
+
+// Somebody else's machine is unaffected, or one person with a typo could shut
+// the kitchen out on a Sunday morning.
+$_SERVER['REMOTE_ADDR'] = '198.51.100.8';
+
+check( 'another machine is not held', Kitchen::lockedFor(), 0 );
+check( 'and can still get in', Kitchen::unlock( 'kitchen-door-2026' ), true );
+
+Kitchen::lock();
+
+// Getting it right clears the tally, so two typos on the way in are not still
+// counted against them next Sunday.
+$_SERVER['REMOTE_ADDR'] = '198.51.100.9';
+
+Kitchen::unlock( 'wrong' );
+Kitchen::unlock( 'wrong' );
+Kitchen::unlock( 'kitchen-door-2026' );
+Kitchen::lock();
+
+for ( $guess = 0; $guess < 4; $guess++ ) {
+	Kitchen::unlock( 'wrong-again-' . $guess );
+}
+
+check( 'a success wipes the earlier misses', Kitchen::lockedFor(), 0 );
+
+LoginAttempts::clearAll();
+Kitchen::setPassword( '' );
+unset( $_SERVER['REMOTE_ADDR'] );
 
 /* ------------------------------------------------------------------ */
 
