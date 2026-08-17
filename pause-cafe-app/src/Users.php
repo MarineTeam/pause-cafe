@@ -92,6 +92,58 @@ class Users {
 	 * @return int New user ID.
 	 * @throws \RuntimeException When the email is already taken.
 	 */
+	/**
+	 * Makes the very first organiser, once and only once.
+	 *
+	 * Two first-run requests arriving together could both find no organiser and
+	 * both go on to make one, because a COUNT is a question they can both get
+	 * the old answer to. The window is narrow and needs the install to be
+	 * untouched, but the prize is an admin account, so it is worth closing
+	 * properly rather than hoping.
+	 *
+	 * Two things close it. BEGIN IMMEDIATE takes the write lock before the
+	 * check, so the second request waits and then sees what the first did. And
+	 * the marker is written as an ordinary INSERT against a primary key, so
+	 * even if the lock were somehow not enough the database itself refuses the
+	 * second one -- Settings::set() is deliberately not used here, because it
+	 * upserts and would happily overwrite.
+	 *
+	 * Marker and account go in together. If creating the account fails -- a
+	 * password too short, an address already taken -- the rollback takes the
+	 * marker with it, or a mistyped form would close setup for ever and leave
+	 * the install with no way in.
+	 *
+	 * @throws \RuntimeException
+	 */
+	public static function createFirstAdmin( string $email, string $password, string $name ): int {
+		$pdo = Database::pdo();
+
+		$pdo->exec( 'BEGIN IMMEDIATE' );
+
+		try {
+			if ( ! Database::needsSetup() ) {
+				throw new \RuntimeException( 'Setup has already been done on this site.' );
+			}
+
+			$pdo->prepare( 'INSERT INTO settings (key, value) VALUES (?, ?)' )
+				->execute( array( Database::SETUP_KEY, gmdate( 'Y-m-d H:i:s' ) ) );
+
+			$id = self::create( $email, $password, $name, '', self::ROLE_ADMIN, true );
+
+			$pdo->exec( 'COMMIT' );
+
+			return $id;
+		} catch ( \Throwable $e ) {
+			try {
+				$pdo->exec( 'ROLLBACK' );
+			} catch ( \Throwable $ignored ) {
+				// Never opened, or already unwound.
+			}
+
+			throw $e;
+		}
+	}
+
 	public static function createExternal( string $email, string $name ): int {
 		$email = self::normaliseEmail( $email );
 

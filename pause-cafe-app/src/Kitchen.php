@@ -35,21 +35,66 @@ class Kitchen {
 		return ! empty( $_SESSION[ self::SESSION_KEY ] );
 	}
 
-	public static function unlock( string $password ): bool {
-		$hash = Settings::get( 'kitchen_password_hash' );
+	/**
+	 * How long this machine has to wait before guessing again, in seconds.
+	 *
+	 * Counted per source address rather than site-wide. One shared password
+	 * means every wrong guess is against the same secret, so a single tally
+	 * would let one person with a typo shut the kitchen out on a Sunday
+	 * morning -- which on this page is a worse outcome than the guessing.
+	 */
+	public static function lockedFor(): int {
+		$ip = LoginAttempts::ip();
 
+		return LoginAttempts::retryAfter( self::scope( $ip ), $ip );
+	}
+
+	public static function unlock( string $password ): bool {
 		/*
-		 * password_verify on bcrypt takes ~100ms, which is the only throttle here.
-		 * Enough to make guessing tedious on a page whose worst case is a list of
-		 * who ordered lunch; a login worth more would need real rate limiting.
+		 * bcrypt's ~100ms was doing this job, and it was never the right tool.
+		 * A cost per guess is not a limit on guesses: nothing stops a hundred
+		 * requests at once, and a hundred slow guesses in parallel are a
+		 * hundred fast ones. What is behind the page is the congregation's
+		 * names, their groups and what each of them is eating.
+		 *
+		 * Checked here rather than only in the route, for the same reason the
+		 * sign-in link refuses in its own method: this is the code that decides
+		 * whether a password was right, and a guard living in the caller is one
+		 * the next caller will not have.
 		 */
-		if ( '' === $hash || ! password_verify( $password, $hash ) ) {
+		if ( self::lockedFor() > 0 ) {
 			return false;
 		}
+
+		$ip   = LoginAttempts::ip();
+		$hash = Settings::get( 'kitchen_password_hash' );
+
+		if ( '' === $hash || ! password_verify( $password, $hash ) ) {
+			LoginAttempts::record( self::scope( $ip ), $ip );
+
+			return false;
+		}
+
+		// Getting in clears the tally, so a cook who mistyped twice and then
+		// got it right is not still being counted against on their next visit.
+		LoginAttempts::forgive( self::scope( $ip ) );
 
 		$_SESSION[ self::SESSION_KEY ] = true;
 
 		return true;
+	}
+
+	/**
+	 * The name this machine's kitchen guesses are counted under.
+	 *
+	 * The throttle's tight per-identity limit is keyed on an address, and there
+	 * is no address here -- one password serves everybody. Putting the source
+	 * in the key borrows that limit and makes it mean "five guesses from this
+	 * machine", which is what the kitchen wants, while the throttle's own
+	 * per-source limit still catches somebody working through many at once.
+	 */
+	private static function scope( string $ip ): string {
+		return 'kitchen:' . ( '' !== $ip ? $ip : 'unknown' );
 	}
 
 	public static function lock(): void {

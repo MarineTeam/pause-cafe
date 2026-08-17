@@ -29,6 +29,14 @@ Open <http://127.0.0.1:8321>. With no accounts yet it goes straight to setup and
 creates the first organiser. The database and the three pickup locations
 (Marine, RCC, Fraser) are created on first request.
 
+**Setup runs once and then closes for good.** Making the first organiser takes
+the write lock before it checks whether one exists, and writes a marker whose
+key is a primary key — so two requests arriving together cannot both make an
+admin, and the database is what refuses the second rather than the code merely
+trying not to. The marker also means the page stays shut if every organiser
+account is later closed; the way back from that is `php tools/rescue.php`, which
+needs the server rather than a browser.
+
 The `-d extension=php_pdo_sqlite` is only needed where SQLite is not enabled in
 `php.ini`. On most hosts it already is.
 
@@ -541,6 +549,13 @@ in Settings — which lets the kitchen team open it on a phone without an accoun
 Leave it unset and the page stays organiser-only. It shows member names and what
 they ordered, so treat the password the way you would a door key.
 
+**Guessing it is throttled**: five wrong tries from one machine and that machine
+waits fifteen minutes. Counted per source rather than site-wide, so one cook
+mistyping cannot shut the rest of the kitchen out on a Sunday morning, and
+getting it right clears the tally. bcrypt used to be the only thing slowing this
+down, which was never a limit on the number of guesses — a hundred slow ones in
+parallel are a hundred fast ones. `php tools/rescue.php` clears a lockout.
+
 ## Notes on orders
 
 Two kinds, both shown in the kitchen table and the CSV, and labelled there so a
@@ -692,16 +707,16 @@ kitchen report with print and CSV.
 
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php          #  51 assertions
-php -d extension=php_pdo_sqlite tests/test-app.php               # 358 assertions
+php -d extension=php_pdo_sqlite tests/test-app.php               # 365 assertions
 php -d extension=php_pdo_sqlite tests/test-signin.php            # 200 assertions
 php -d extension=php_pdo_sqlite tests/test-design.php            #  67 assertions
 php -d extension=php_pdo_sqlite tests/test-orders-admin.php      #  28 assertions
 php -d extension=php_pdo_sqlite tests/test-order-edits.php       #  76 assertions
 php -d extension=php_pdo_sqlite tests/test-menu-flexibility.php  #  18 assertions
-php -d extension=php_pdo_sqlite tests/test-deletion.php          #  61 assertions
+php -d extension=php_pdo_sqlite tests/test-deletion.php          #  74 assertions
 ```
 
-All of them run against a throwaway database and need no server. 859 in total.
+All of them run against a throwaway database and need no server. 879 in total.
 
 The HTTP layer — sessions, CSRF, approval gating, checkout, the side cart,
 access control — has its own end-to-end run against a live server:
@@ -709,7 +724,7 @@ access control — has its own end-to-end run against a live server:
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                                # 274 assertions
+bash tests/e2e.sh                                                # 280 assertions
 ```
 
 It expects an empty database, since it drives first-run setup itself.

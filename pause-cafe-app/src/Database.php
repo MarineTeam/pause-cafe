@@ -540,8 +540,35 @@ class Database {
 	 * True when no admin exists yet, which is what puts the app into first-run
 	 * setup instead of showing a login nobody can pass.
 	 */
+	/**
+	 * The settings row that says first-run has happened.
+	 *
+	 * `key` is the primary key, so inserting it twice is a constraint violation
+	 * rather than a race anybody has to think about. That is the whole point of
+	 * writing the marker rather than counting organisers: a count is a question
+	 * two requests can both get the old answer to, and a primary key is not.
+	 */
+	public const SETUP_KEY = 'setup_completed_at';
+
+	/**
+	 * Whether the first organiser still has to be made.
+	 *
+	 * Both halves matter. The marker closes setup for good, so an install whose
+	 * organisers were all later removed does not reopen a page that hands out
+	 * an admin account to whoever finds it -- that is what tools/rescue.php is
+	 * for, and it needs the server rather than a browser. Counting organisers
+	 * is still asked because installs set up before the marker existed have
+	 * none, and they must not be sent back to setup.
+	 */
 	public static function needsSetup(): bool {
 		$pdo = self::pdo();
+
+		$marker = $pdo->prepare( 'SELECT COUNT(*) FROM settings WHERE key = ?' );
+		$marker->execute( array( self::SETUP_KEY ) );
+
+		if ( (int) $marker->fetchColumn() > 0 ) {
+			return false;
+		}
 
 		return 0 === (int) $pdo->query( "SELECT COUNT(*) FROM users WHERE role = 'admin'" )->fetchColumn();
 	}
