@@ -268,6 +268,54 @@ check_throws(
 	'could not be read'
 );
 
+echo "\nAnd a picture that is small on disk but vast once opened\n";
+
+/*
+ * The byte cap is a limit on the compressed file, which says nothing about what
+ * it becomes in memory -- GD wants about four bytes a pixel whatever the
+ * format, so a kilobyte of flat colour can ask for gigabytes.
+ *
+ * Written by hand as a PNG signature and an IHDR chunk, nothing else. That is
+ * all getimagesize() reads, so the dimensions can be enormous while the file
+ * stays a few dozen bytes. Generating a real one would mean allocating exactly
+ * the memory the guard exists to refuse.
+ */
+$pngHeader = static function ( int $width, int $height ) use ( $scratch ): string {
+	$ihdr = pack( 'NN', $width, $height ) . pack( 'C5', 8, 2, 0, 0, 0 );
+	$data = "\x89PNG\r\n\x1a\n"
+		. pack( 'N', 13 ) . 'IHDR' . $ihdr . pack( 'N', crc32( 'IHDR' . $ihdr ) );
+
+	$path = $scratch . '/claims-' . $width . 'x' . $height . '.png';
+
+	file_put_contents( $path, $data );
+
+	return $path;
+};
+
+$bomb = $pngHeader( 30000, 30000 );
+
+/*
+ * What can be shown here is the premise: a file of a few dozen bytes announces
+ * 900 megapixels, and getimagesize() reports that from the header without
+ * decoding anything -- which is what makes a check possible before the
+ * allocation rather than after it.
+ *
+ * The refusal itself cannot be reached from here. accept() insists on
+ * is_uploaded_file() first, which is never true outside a real request, so
+ * every call in this file stops at that wall. It is covered over HTTP in
+ * e2e.sh, where the upload is genuine.
+ */
+check( 'the file is a few dozen bytes', filesize( $bomb ) < 100, true );
+check( 'while announcing 30000 pixels across', @getimagesize( $bomb )[0], 30000 );
+check( 'and 900 megapixels in total', ( @getimagesize( $bomb )[0] * @getimagesize( $bomb )[1] ) / 1000000, 900 );
+
+// The other shape of the same trick: within any megapixel budget, but a single
+// edge long enough to hurt on its own.
+$strip = $pngHeader( 100000, 2 );
+
+check( 'a long thin one is only 0.2 megapixels', ( @getimagesize( $strip )[0] * @getimagesize( $strip )[1] ) / 1000000, 0.2 );
+check( 'but 100000 pixels along one edge', @getimagesize( $strip )[0], 100000 );
+
 echo "\nDeleting a picture only ever touches the uploads folder\n";
 
 mkdir( $uploads, 0777, true );

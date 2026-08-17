@@ -37,6 +37,22 @@ class Images {
 	/** Refused above this, before anything is decoded. */
 	private const MAX_BYTES = 6 * 1024 * 1024;
 
+	/**
+	 * How large the picture may be once unpacked, rather than on disk.
+	 *
+	 * The byte cap is a limit on the compressed file and says nothing about
+	 * what it becomes in memory: GD wants about four bytes a pixel, so a
+	 * kilobyte of flat-colour PNG can ask for gigabytes.
+	 *
+	 * A phone photo is around twelve megapixels, so forty leaves plenty of room
+	 * for anything real while keeping the worst case to roughly 160 MB. The
+	 * per-edge limit catches the other shape of the same trick -- one pixel
+	 * tall and a hundred thousand wide passes a megapixel count easily.
+	 */
+	private const MAX_MEGAPIXELS = 40;
+
+	private const MAX_PIXELS_PER_EDGE = 20000;
+
 	private static string $dir = '';
 
 	private static string $url = '';
@@ -108,6 +124,43 @@ class Images {
 
 		if ( ! isset( $readers[ $type ] ) || ! function_exists( $readers[ $type ][0] ) ) {
 			throw new \RuntimeException( 'Pictures have to be JPEG, PNG, GIF or WebP.' );
+		}
+
+		/*
+		 * How big it is once unpacked, checked before anything unpacks it.
+		 *
+		 * The 6 MB cap above is a limit on the file, and the file is the
+		 * compressed form. A PNG of one flat colour can be a few kilobytes on
+		 * disk and thirty thousand pixels square in memory -- GD allocates
+		 * roughly four bytes a pixel whatever the format, so that is gigabytes
+		 * asked for in one call, and the request either takes the memory limit
+		 * with it or the server's spare memory with it.
+		 *
+		 * getimagesize() reads the header only, so the dimensions are known
+		 * before the decode is attempted. Only an organiser can reach this, so
+		 * it is a guard against a mistake or a curious afternoon rather than
+		 * against an attack -- but a photo straight off a phone is about twelve
+		 * megapixels and this allows forty, so nothing real is turned away.
+		 */
+		$width  = (int) ( $info[0] ?? 0 );
+		$height = (int) ( $info[1] ?? 0 );
+
+		if ( $width < 1 || $height < 1 ) {
+			throw new \RuntimeException( 'That picture has no size to it, so it cannot be read.' );
+		}
+
+		if ( $width > self::MAX_PIXELS_PER_EDGE || $height > self::MAX_PIXELS_PER_EDGE ) {
+			throw new \RuntimeException(
+				'That picture is ' . $width . ' by ' . $height . ' pixels, and each side has to be under '
+				. number_format( self::MAX_PIXELS_PER_EDGE ) . '. Try saving it smaller.'
+			);
+		}
+
+		if ( $width * $height > self::MAX_MEGAPIXELS * 1000000 ) {
+			throw new \RuntimeException(
+				'That picture is too large to open — about ' . round( ( $width * $height ) / 1000000 )
+				. ' megapixels, and the limit is ' . self::MAX_MEGAPIXELS . '. Try saving it smaller.'
+			);
 		}
 
 		list( $reader ) = $readers[ $type ];

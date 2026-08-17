@@ -150,6 +150,13 @@ file) and scaled to 1200px on the longest edge, so a photo straight off a phone
 is fine. The type is read from the bytes rather than the filename, and the
 stored name is random.
 
+**Dimensions are checked before anything is decoded**: nothing over 40
+megapixels, or over 20000 pixels on a side. The 6 MB cap is a limit on the
+compressed file and says nothing about what it becomes in memory — GD wants
+about four bytes a pixel, so a few dozen bytes of flat-colour PNG can ask for
+gigabytes. A phone photo is around twelve megapixels, so nothing real is turned
+away.
+
 They live in `public/assets/uploads/`, which is gitignored — they are content,
 not source, and a deploy must not overwrite them.
 
@@ -544,6 +551,14 @@ in — sorting by dish still keeps each campus's groups together underneath.
 and by dish, pickup location or group. The CSV export honours whatever is
 currently filtered and sorted.
 
+**Nothing in a CSV can run.** Quoting protects the shape of the file; it says
+nothing about what Excel does with a cell beginning `=`, `+`, `-` or `@`, which
+is to treat it as a formula and evaluate it on open. Names, notes and groups are
+all typed by members, so every cell gets an apostrophe in front if it could be
+read as one — invisible in a spreadsheet, and enough to make it text. Numbers
+are left alone, so a column of money still adds up. The same guard is in all
+three WordPress plugins.
+
 **Access.** Organisers always see it. Everyone else needs a shared password, set
 in Settings — which lets the kitchen team open it on a phone without an account.
 Leave it unset and the page stays organiser-only. It shows member names and what
@@ -707,16 +722,16 @@ kitchen report with print and CSV.
 
 ```bash
 php -d extension=php_pdo_sqlite tests/test-schedule.php          #  51 assertions
-php -d extension=php_pdo_sqlite tests/test-app.php               # 365 assertions
+php -d extension=php_pdo_sqlite tests/test-app.php               # 376 assertions
 php -d extension=php_pdo_sqlite tests/test-signin.php            # 200 assertions
-php -d extension=php_pdo_sqlite tests/test-design.php            #  67 assertions
+php -d extension=php_pdo_sqlite tests/test-design.php            #  72 assertions
 php -d extension=php_pdo_sqlite tests/test-orders-admin.php      #  28 assertions
 php -d extension=php_pdo_sqlite tests/test-order-edits.php       #  76 assertions
 php -d extension=php_pdo_sqlite tests/test-menu-flexibility.php  #  18 assertions
 php -d extension=php_pdo_sqlite tests/test-deletion.php          #  74 assertions
 ```
 
-All of them run against a throwaway database and need no server. 879 in total.
+All of them run against a throwaway database and need no server. 895 in total.
 
 The HTTP layer — sessions, CSRF, approval gating, checkout, the side cart,
 access control — has its own end-to-end run against a live server:
@@ -724,7 +739,7 @@ access control — has its own end-to-end run against a live server:
 ```bash
 rm -f data/pause-cafe.sqlite*
 php -d extension=php_pdo_sqlite -S 127.0.0.1:8321 -t public router.php &
-bash tests/e2e.sh                                                # 280 assertions
+bash tests/e2e.sh                                                # 287 assertions
 ```
 
 It expects an empty database, since it drives first-run setup itself.

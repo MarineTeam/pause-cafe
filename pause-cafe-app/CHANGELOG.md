@@ -12,6 +12,23 @@ Notable changes to the standalone app. Dates are the day the change landed on
 
 ### Security
 
+- **A member could put a spreadsheet formula in the kitchen list.** Quoting
+  protects the shape of a CSV file and says nothing about what Excel does with a
+  cell beginning `=`, `+`, `-` or `@`: it runs it on open. Names, notes and
+  groups are all typed by members, so an order placed under
+  `=HYPERLINK("https://elsewhere.example","Open")` sat in the export until an
+  organiser opened it. Every cell is now made inert before it is written, in
+  this app and in all three WordPress plugins. Numbers are deliberately left
+  alone, so a column of money still totals. Reported by a security audit.
+- **An image could be small on disk and enormous once opened.** The 6 MB cap is
+  a limit on the compressed file; GD wants about four bytes a pixel whatever the
+  format, so a few dozen bytes of flat-colour PNG can ask for gigabytes.
+  Dimensions are now read from the header and refused — over 40 megapixels, or
+  over 20000 pixels on any single edge — before anything is decoded. A phone
+  photo is around twelve megapixels, so nothing real is turned away. Only an
+  organiser can upload, which is why this was a mistake to catch rather than an
+  attack to repel.
+
 - **Guessing the shared kitchen password was not rate limited.** The code said
   as much: bcrypt's ~100ms per guess was "the only throttle here". A cost per
   guess is not a limit on guesses — nothing stopped a hundred at once, and a

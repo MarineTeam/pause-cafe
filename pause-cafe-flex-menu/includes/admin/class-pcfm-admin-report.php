@@ -180,7 +180,7 @@ class PCFM_Admin_Report {
 	}
 
 	/**
-	 * Writes one CSV row.
+	 * Writes one CSV row, with every cell made inert first.
 	 *
 	 * $escape has to be passed explicitly. PHP 8.4 deprecates relying on its
 	 * default, and the deprecation notice is emitted straight into the output
@@ -190,7 +190,42 @@ class PCFM_Admin_Report {
 	 * @param resource $handle
 	 */
 	private static function csv_row( $handle, array $fields ) {
-		fputcsv( $handle, $fields, ',', '"', '' );
+		fputcsv( $handle, array_map( array( __CLASS__, 'csv_cell' ), $fields ), ',', '"', '' );
+	}
+
+	/**
+	 * One cell, safe to open in a spreadsheet.
+	 *
+	 * Quoting protects the shape of a CSV file and says nothing about what Excel
+	 * does with a cell starting =, +, - or @: it treats it as a formula and runs
+	 * it on open. Much of what this exports was typed by a customer -- the name
+	 * on a meal, the note against it -- so an order placed under the name
+	 * =HYPERLINK("https://elsewhere.example","Open me") waits in the file until
+	 * somebody opens the spreadsheet. An apostrophe in front is read as "this is
+	 * text" and is not displayed.
+	 *
+	 * Numbers are left alone deliberately. Prefixing them would turn a column of
+	 * money into text and leave whoever is adding it up with nothing, so -12.50
+	 * stays a number while -12.50+SUM(A:A) does not. What separates them is
+	 * whether the whole value is a number, not what it begins with.
+	 *
+	 * @param mixed $value
+	 * @return string
+	 */
+	private static function csv_cell( $value ) {
+		$text = (string) $value;
+
+		// Tab and carriage return are included: a cell can lead with one and
+		// still have a formula behind it.
+		if ( '' === $text || ! in_array( $text[0], array( '=', '+', '-', '@', "\t", "\r" ), true ) ) {
+			return $text;
+		}
+
+		if ( is_numeric( $text ) || preg_match( '/^[-+]?[$£€]?\d{1,3}(,\d{3})*(\.\d+)?%?$/', $text ) ) {
+			return $text;
+		}
+
+		return "'" . $text;
 	}
 
 	public static function handle_export() {

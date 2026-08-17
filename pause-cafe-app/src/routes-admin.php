@@ -12,6 +12,7 @@ use PauseCafe\AdminNav;
 use PauseCafe\Auth;
 use PauseCafe\Blackouts;
 use PauseCafe\Csrf;
+use PauseCafe\Csv;
 use PauseCafe\Design;
 use PauseCafe\Groups;
 use PauseCafe\Identities;
@@ -1486,17 +1487,16 @@ function sanitise_time( string $value, string $fallback ): string {
 }
 
 /**
- * Writes one CSV row.
+ * Writes one CSV row, with every cell made inert first.
  *
- * $escape must be passed explicitly: PHP 8.4 deprecates relying on its default,
- * and the deprecation notice is emitted straight into the output stream, which
- * corrupts the downloaded file. Empty string is both what PHP 9 will default to
- * and the RFC 4180 behaviour.
+ * The work is in PauseCafe\Csv. Half of what these exports contain was typed by
+ * a member, and a cell beginning with = or @ is a formula as far as Excel is
+ * concerned.
  *
  * @param resource $handle
  */
 function csv_row( $handle, array $fields ): void {
-	fputcsv( $handle, $fields, ',', '"', '' );
+	Csv::write( $handle, $fields );
 }
 
 $router->post(
