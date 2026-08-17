@@ -12,7 +12,25 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'PCFM_VERSION', '1.0.0' );
+/**
+ * Read from the header above rather than written out again here.
+ *
+ * These two had already drifted -- the header said 1.0.1 while the constant
+ * said 1.0.0 -- and the constant is what every stylesheet and script is cache-
+ * busted with, so browsers were being told nothing had changed when it had.
+ * WordPress reads the header for updates and the plugins screen, which makes it
+ * the one that has to be right, so it is the one to derive from.
+ *
+ * get_file_data() lives in wp-includes and is loaded well before plugins, so it
+ * is safe here. It costs one read of the first 8 KB of this file per request,
+ * which is a fair price for a number that cannot be wrong.
+ */
+define(
+	'PCFM_VERSION',
+	function_exists( 'get_file_data' )
+		? ( get_file_data( __FILE__, array( 'version' => 'Version' ) )['version'] ?: '0.0.0' )
+		: '0.0.0'
+);
 define( 'PCFM_FILE', __FILE__ );
 define( 'PCFM_DIR', plugin_dir_path( __FILE__ ) );
 define( 'PCFM_URL', plugin_dir_url( __FILE__ ) );

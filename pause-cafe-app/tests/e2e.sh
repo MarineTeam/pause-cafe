@@ -20,6 +20,68 @@
 set -u
 
 BASE=${BASE:-http://127.0.0.1:8321}
+
+# Fixture dates, worked out rather than written down --------------------------
+#
+# These used to be literals, and the suite failed 77 assertions one morning
+# because the calendar had moved past them overnight. Nothing was wrong with the
+# app: the base date was last Sunday, so the dish it hangs everything on was no
+# longer on the menu, and a third of the run fell over behind it.
+#
+# A suite that goes red by the date is worse than no suite, because the first
+# thing anybody learns is to ignore it.
+#
+# D0 is asked of the app rather than guessed, so the fixture and the code agree
+# by construction whatever day this runs on and whatever the schedule is set to.
+# The rest are the offsets the old literals had: a week, a fortnight, three
+# weeks, and seven weeks out for the section that needs a date of its own.
+D0=$(php -d extension=php_pdo_sqlite -r 'require "src/bootstrap.php"; echo PauseCafe\Menu::currentServiceDate() ?: "";' 2>/dev/null)
+
+if [ -z "$D0" ]; then
+  D0=$(date -d "next Sunday" +%Y-%m-%d 2>/dev/null)
+fi
+
+if [ -z "$D0" ]; then
+  echo "Could not work out a service date to test against. Is PHP on the path?"
+  exit 1
+fi
+
+D1=$(date -d "$D0 +7 days"  +%Y-%m-%d)
+D2=$(date -d "$D0 +14 days" +%Y-%m-%d)
+D3=$(date -d "$D0 +21 days" +%Y-%m-%d)
+D4=$(date -d "$D0 +49 days" +%Y-%m-%d)
+
+# Wide bounds for dishes that carry their own window, so the window is never
+# what a test is accidentally about.
+WAS=$(date -d "$D0 -1 year" +%Y-%m-%d)
+WILL=$(date -d "$D0 +1 year" +%Y-%m-%d)
+
+# The grid builder works a calendar month at a time, so its two dates have to
+# share one -- and be in the future, since days already served are read-only.
+# The old literals happened to satisfy both; derived ones do not, so the first
+# pair of consecutive Sundays that falls wholly inside a month is searched for
+# rather than assumed.
+BD1=$(date -d "$D0 +14 days" +%Y-%m-%d)
+
+for step in 0 7 14 21; do
+  candidate=$(date -d "$BD1 +$step days" +%Y-%m-%d)
+
+  if [ "$(date -d "$candidate" +%Y-%m)" = "$(date -d "$candidate +7 days" +%Y-%m)" ]; then
+    BD1=$candidate
+    break
+  fi
+done
+
+BD2=$(date -d "$BD1 +7 days" +%Y-%m-%d)
+BMONTH=$(date -d "$BD1" +%Y-%m)
+BLABEL=$(date -d "$BD1" +"%B %Y")
+
+echo "Service dates for this run: $D0, $D1, $D2, $D3, $D4"
+D0_LABEL=$(date -d "$D0" +"%A %-d %B")
+D1_LABEL=$(date -d "$D1" +"%A %-d %B")
+BD1_LABEL=$(date -d "$BD1" +"%A %-d %B")
+
+echo "Grid builder month:         $BLABEL ($BD1, $BD2)"
 A=$(mktemp); M=$(mktemp)   # cookie jars: organiser, member
 pass=0; fail=0
 
@@ -98,8 +160,8 @@ echo "Menu"
 T=$(tok $A /admin/menu/new)
 SAVE=$(curl -s -o /dev/null -w '%{http_code}' -b $A -c $A -X POST "$BASE/admin/menu/save" \
   -d "_token=$T" -d "name=BBQ pork on rice" -d "location_id=1" -d "price=10.00" \
-  -d "capacity=2" -d "status=published" -d "service_date=2026-08-16" \
-  -d "open_from=2026-01-01T00:00" -d "close_at=2027-01-01T00:00")
+  -d "capacity=2" -d "status=published" -d "service_date=$D0" \
+  -d "open_from=${WAS}T00:00" -d "close_at=${WILL}T00:00")
 want "saving a dish redirects" "$SAVE" "302"
 
 HOME_HTML=$(curl -s "$BASE/")
@@ -110,51 +172,51 @@ has "signed-out visitors are asked to sign in" "$HOME_HTML" 'class="button" href
 
 echo ""
 echo "Grid builder"
-BUILDER=$(curl -s -b $A -c $A "$BASE/admin/menu/builder?month=2026-08")
-has "the builder renders a month" "$BUILDER" "August 2026"
-has "with a column per pickup location" "$BUILDER" 'dish\[2026-08-23\]\[1\]'
+BUILDER=$(curl -s -b $A -c $A "$BASE/admin/menu/builder?month=$BMONTH")
+has "the builder renders a month" "$BUILDER" "$BLABEL"
+has "with a column per pickup location" "$BUILDER" "dish\[$BD1\]\[1\]"
 has "an autocomplete list of past dishes" "$BUILDER" '<datalist id="dish-names">'
 has "including one already entered" "$BUILDER" 'value="BBQ pork on rice"'
 has "and the menu list links to it" "$(curl -s -b $A -c $A "$BASE/admin/menu")" 'href="/admin/menu/builder"'
 
-T=$(tok $A "/admin/menu/builder?month=2026-08")
+T=$(tok $A "/admin/menu/builder?month=$BMONTH")
 SAVE=$(curl -s -o /dev/null -w '%{http_code}' -b $A -c $A -X POST "$BASE/admin/menu/builder" \
-  -d "_token=$T" -d "month=2026-08" \
-  -d "dish[2026-08-23][1]=Lentil shepherd pie" \
-  -d "dish[2026-08-23][2]=Chicken katsu" \
-  -d "dish[2026-08-30][1]=Lentil shepherd pie")
+  -d "_token=$T" -d "month=$BMONTH" \
+  -d "dish[$BD1][1]=Lentil shepherd pie" \
+  -d "dish[$BD1][2]=Chicken katsu" \
+  -d "dish[$BD2][1]=Lentil shepherd pie")
 want "saving the grid redirects" "$SAVE" "302"
 
-BUILDER=$(curl -s -b $A -c $A "$BASE/admin/menu/builder?month=2026-08")
+BUILDER=$(curl -s -b $A -c $A "$BASE/admin/menu/builder?month=$BMONTH")
 has "the new dish is in its cell" "$BUILDER" 'value="Lentil shepherd pie"'
 has "and so is the other campus" "$BUILDER" 'value="Chicken katsu"'
 has "the menu list shows them too" "$(curl -s -b $A -c $A "$BASE/admin/menu")" "Chicken katsu"
 
 # Clearing a cell drafts rather than deletes, so history survives.
-T=$(tok $A "/admin/menu/builder?month=2026-08")
+T=$(tok $A "/admin/menu/builder?month=$BMONTH")
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/builder" \
-  -d "_token=$T" -d "month=2026-08" \
-  -d "dish[2026-08-23][1]=Lentil shepherd pie" \
-  -d "dish[2026-08-23][2]=" \
-  -d "dish[2026-08-30][1]=Lentil shepherd pie"
+  -d "_token=$T" -d "month=$BMONTH" \
+  -d "dish[$BD1][1]=Lentil shepherd pie" \
+  -d "dish[$BD1][2]=" \
+  -d "dish[$BD2][1]=Lentil shepherd pie"
 
 has "a cleared dish becomes a draft" "$(curl -s -b $A -c $A "$BASE/admin/menu")" "Draft"
 
 # An unpublished dish must not be submitted back by the grid. Saving the month
 # forces every named cell to published, so if the builder put the name in the
 # box, editing any other week would quietly put it back on the menu.
-BUILDER=$(curl -s -b $A -c $A "$BASE/admin/menu/builder?month=2026-08")
-hasnt "an unpublished dish is not in its box" "$(flat "$BUILDER")" 'name="dish\[2026-08-23\]\[2\]" value="Chicken katsu"'
+BUILDER=$(curl -s -b $A -c $A "$BASE/admin/menu/builder?month=$BMONTH")
+hasnt "an unpublished dish is not in its box" "$(flat "$BUILDER")" "name=\"dish\[$BD1\]\[2\]\" value=\"Chicken katsu\""
 has "it is shown as a placeholder instead" "$(flat "$BUILDER")" 'Chicken katsu (unpublished)'
 has "and marked as such" "$BUILDER" "Unpublished"
 
 # Save the month again, editing a different week entirely.
-T=$(tok $A "/admin/menu/builder?month=2026-08")
+T=$(tok $A "/admin/menu/builder?month=$BMONTH")
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/builder" \
-  -d "_token=$T" -d "month=2026-08" \
-  -d "dish[2026-08-23][1]=Lentil shepherd pie" \
-  -d "dish[2026-08-23][2]=" \
-  -d "dish[2026-08-30][1]=Lentil cottage pie"
+  -d "_token=$T" -d "month=$BMONTH" \
+  -d "dish[$BD1][1]=Lentil shepherd pie" \
+  -d "dish[$BD1][2]=" \
+  -d "dish[$BD2][1]=Lentil cottage pie"
 
 hasnt "and it is still not on the public menu" "$(curl -s "$BASE/")" "Chicken katsu"
 has "while the week that was edited did change" \
@@ -308,13 +370,13 @@ echo ""
 echo "Capacity and the cook list"
 has "the dish reads sold out once its portions are gone" "$(curl -s -b $M -c $M "$BASE/")" "Sold out"
 
-REPORT=$(curl -s -b $A -c $A "$BASE/admin/report?date=2026-08-16")
+REPORT=$(curl -s -b $A -c $A "$BASE/admin/report?date=$D0")
 has "the kitchen report lists the dish" "$REPORT" "BBQ pork on rice"
 has "with the eater and group" "$REPORT" "Sam (Youth)"
 has "and a total" "$REPORT" "2 meals in total"
 
 # fputcsv quotes any field containing a space, so the header is partly quoted.
-CSV=$(curl -s -b $A -c $A "$BASE/admin/report/export?date=2026-08-16")
+CSV=$(curl -s -b $A -c $A "$BASE/admin/report/export?date=$D0")
 has "the CSV export has a header row" "$CSV" '"Service date",Location,Dish'
 hasnt "and carries no PHP notices" "$CSV" "Deprecated"
 has "with the order line" "$CSV" "Sam Member"
@@ -328,8 +390,8 @@ has "and one for the wallet" "$(curl -s -b $A -c $A "$BASE/admin/settings")" 'na
 T=$(tok $A /admin/menu/new)
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
   -d "_token=$T" -d "name=Pay later pasta" -d "location_id=2" -d "price=12.00" \
-  -d "capacity=0" -d "status=published" -d "service_date=2026-08-16" \
-  -d "open_from=2026-01-01T00:00" -d "close_at=2027-01-01T00:00"
+  -d "capacity=0" -d "status=published" -d "service_date=$D0" \
+  -d "open_from=${WAS}T00:00" -d "close_at=${WILL}T00:00"
 
 ITEM2=$(curl -s -b $M -c $M "$BASE/" | grep -B2 'Pay later pasta' -A40 | grep -o 'name="item_id" value="[0-9]*"' | head -1 | grep -o '[0-9]\+')
 T=$(tok $M /)
@@ -350,7 +412,7 @@ ACCOUNT=$(curl -s -b $M -c $M "$BASE/account")
 has "a cash order is flagged as still to pay" "$ACCOUNT" "To pay"
 has "and the balance is untouched at \$5" "$ACCOUNT" '\$5\.00'
 
-ORDERS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-08-16")
+ORDERS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D0")
 has "the organiser sees it as owing" "$ORDERS" "Owing"
 has "with a total left to collect" "$ORDERS" '\$12\.00 still to collect'
 
@@ -358,7 +420,7 @@ CODID=$(echo "$ORDERS" | grep -o '/admin/orders/[0-9]*/paid' | tail -1 | grep -o
 T=$(tok $A /admin/orders)
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/$CODID/paid" -d "_token=$T" -d "state=paid"
 
-ORDERS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-08-16")
+ORDERS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D0")
 has "marking it paid shows up" "$ORDERS" "Paid"
 hasnt "and the collect banner is gone" "$ORDERS" "still to collect"
 
@@ -477,7 +539,7 @@ T=$(tok $A "/admin/menu/$DISH_ID")
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
   -d "_token=$T" -d "id=$DISH_ID" -d "name=BBQ pork with broccoli on rice" \
   -d "location_id=1" -d "price=10.00" -d "capacity=2" -d "status=published" \
-  -d "service_date=2026-08-16" -d "open_from=2026-01-01T00:00" -d "close_at=2027-01-01T00:00"
+  -d "service_date=$D0" -d "open_from=${WAS}T00:00" -d "close_at=${WILL}T00:00"
 
 EDITED=$(curl -s -b $A -c $A "$BASE/admin/menu/$DISH_ID")
 has "the organiser is told somebody was emailed" "$EDITED" "already ordered this"
@@ -501,7 +563,7 @@ T=$(tok $A "/admin/menu/$DISH_ID")
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
   -d "_token=$T" -d "id=$DISH_ID" -d "name=BBQ pork and broccoli" \
   -d "location_id=1" -d "price=10.00" -d "capacity=2" -d "status=published" \
-  -d "service_date=2026-08-16" -d "open_from=2026-01-01T00:00" -d "close_at=2027-01-01T00:00" \
+  -d "service_date=$D0" -d "open_from=${WAS}T00:00" -d "close_at=${WILL}T00:00" \
   -d "notify_present=1"
 
 QUIET=$(curl -s -b $A -c $A "$BASE/admin/menu/$DISH_ID")
@@ -517,7 +579,7 @@ echo ""
 echo "Cancelling an order"
 # The first order on this date is the wallet one, so this exercises the refund
 # path rather than the cash one.
-ORDERS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-08-16")
+ORDERS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D0")
 WALLET_ORDER=$(echo "$ORDERS" | grep -o '/admin/orders/[0-9]*/cancel' | head -1 | grep -o '[0-9]\+')
 
 T=$(tok $A /admin/orders)
@@ -564,18 +626,18 @@ echo ""
 echo "Overview date picker"
 OVERVIEW=$(curl -s -b $A -c $A "$BASE/admin")
 has "the overview offers a date" "$OVERVIEW" 'name="date"'
-has "defaulting to the next serving" "$OVERVIEW" "Cook list for Sunday 16 August"
+has "defaulting to the next serving" "$OVERVIEW" "Cook list for $D0_LABEL"
 has "which is marked as such" "$OVERVIEW" "next up"
 has "and shows what is owed on it" "$OVERVIEW" "Still to collect"
 
-LATER=$(curl -s -b $A -c $A "$BASE/admin?date=2026-08-23")
-has "a later date can be picked" "$LATER" "Cook list for Sunday 23 August"
+LATER=$(curl -s -b $A -c $A "$BASE/admin?date=$BD1")
+has "a later date can be picked" "$LATER" "Cook list for $BD1_LABEL"
 has "flagged as not the next one" "$LATER" "Not the next serving"
 has "with nothing ordered yet" "$LATER" "No orders for this date"
 
 # A date that is not on the menu must not be trusted into the query.
 BOGUS=$(curl -s -b $A -c $A "$BASE/admin?date=not-a-date")
-has "a bogus date falls back to the next serving" "$BOGUS" "Cook list for Sunday 16 August"
+has "a bogus date falls back to the next serving" "$BOGUS" "Cook list for $D0_LABEL"
 
 echo ""
 echo "Orders whose dish was taken off the menu"
@@ -588,8 +650,8 @@ T=$(tok $A /admin/menu/new)
 # list is newest-first, and picking the wrong end drafts somebody else's dish.
 DOOMED=$(curl -s -o /dev/null -w '%{redirect_url}' -b $A -c $A -X POST "$BASE/admin/menu/save" \
   -d "_token=$T" -d "name=Doomed pie" -d "location_id=1" -d "price=4.00" \
-  -d "status=published" -d "service_date=2026-09-06" \
-  -d "open_from=2026-01-01T00:00" -d "close_at=2027-01-01T00:00" | grep -o '[0-9]*$')
+  -d "status=published" -d "service_date=$D3" \
+  -d "open_from=${WAS}T00:00" -d "close_at=${WILL}T00:00" | grep -o '[0-9]*$')
 
 T=$(tok $M /)
 curl -s -o /dev/null -b $M -c $M -X POST "$BASE/cart/add" -d "_token=$T" -d "item_id=$DOOMED" -d "qty=1"
@@ -599,8 +661,8 @@ curl -s -o /dev/null -b $M -c $M -X POST "$BASE/checkout" \
 # Now take it off the menu. It has been ordered, so it drafts.
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/$DOOMED/delete" -d "_token=$(tok $A "/admin/menu/$DOOMED")"
 
-ORD=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06")
-has "the date is still offered" "$ORD" "2026-09-06"
+ORD=$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D3")
+has "the date is still offered" "$ORD" "$D3"
 has "the orders are still listed" "$ORD" "sam@example.org"
 has "and it says the dish has gone" "$ORD" "No longer on the menu"
 has "naming it" "$ORD" "Doomed pie"
@@ -614,44 +676,44 @@ has "and a status filter" "$ORD" 'name="status"'
 # redirect chain and a separate GET both work, but fetching the CSRF token for
 # the next step is itself a request, and it eats whatever is waiting.
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/bulk" \
-  -d "_token=$(tok $A "/admin/orders?date=2026-09-06")" \
-  -d "date=2026-09-06" -d "status=confirmed" -d "action=paid"
+  -d "_token=$(tok $A "/admin/orders?date=$D3")" \
+  -d "date=$D3" -d "status=confirmed" -d "action=paid"
 has "ticking nothing does nothing" \
-  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06")" "Nothing was ticked"
+  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D3")" "Nothing was ticked"
 
 # An id from a date the organiser is not looking at must not be acted on.
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/bulk" \
-  -d "_token=$(tok $A "/admin/orders?date=2026-09-06")" \
-  -d "date=2026-09-06" -d "status=confirmed" -d "action=cancel" -d "ids[]=99999"
+  -d "_token=$(tok $A "/admin/orders?date=$D3")" \
+  -d "date=$D3" -d "status=confirmed" -d "action=cancel" -d "ids[]=99999"
 has "an order from elsewhere is refused" \
-  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06")" "not on this date"
+  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D3")" "not on this date"
 
 # The ids of everything currently listed. sed, not a trailing-digits grep --
 # the attribute ends in a quote, so anchoring on the end of the line matches
 # nothing at all and silently ticks no boxes.
-IDS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06" \
+IDS=$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D3" \
   | sed -n 's/.*name="ids\[\]" value="\([0-9]*\)".*/\1/p')
 ARGS=""
 for id in $IDS; do ARGS="$ARGS -d ids[]=$id"; done
 want "there are orders to act on" "$([ -n "$IDS" ] && echo yes || echo no)" "yes"
 
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/bulk" \
-  -d "_token=$(tok $A "/admin/orders?date=2026-09-06")" \
-  -d "date=2026-09-06" -d "status=confirmed" -d "action=paid" $ARGS
+  -d "_token=$(tok $A "/admin/orders?date=$D3")" \
+  -d "date=$D3" -d "status=confirmed" -d "action=paid" $ARGS
 has "several can be marked paid at once" \
-  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06")" "marked paid"
+  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D3")" "marked paid"
 
 # Cancelling in bulk refunds and keeps the record.
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/bulk" \
-  -d "_token=$(tok $A "/admin/orders?date=2026-09-06")" \
-  -d "date=2026-09-06" -d "status=confirmed" -d "action=cancel" $ARGS
+  -d "_token=$(tok $A "/admin/orders?date=$D3")" \
+  -d "date=$D3" -d "status=confirmed" -d "action=cancel" $ARGS
 has "and cancelled at once" \
-  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06")" "order(s) cancelled"
+  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D3")" "order(s) cancelled"
 
-CANCELLED=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06&status=cancelled")
+CANCELLED=$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D3&status=cancelled")
 has "cancelled orders remain visible" "$CANCELLED" "Cancelled"
 hasnt "and are out of the live list" \
-  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-09-06&status=confirmed")" 'name="ids\[\]"'
+  "$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D3&status=confirmed")" 'name="ids\[\]"'
 
 echo ""
 echo "Organiser navigation"
@@ -737,8 +799,8 @@ if [ -f "$IMG" ]; then
   T=$(tok $A /admin/menu/1)
   curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
     -F "_token=$T" -F "id=1" -F "name=BBQ pork on rice" -F "location_id=1" -F "price=10.00" \
-    -F "status=published" -F "service_date=2026-08-16" \
-    -F "open_from=2026-01-01T00:00" -F "close_at=2027-01-01T00:00" \
+    -F "status=published" -F "service_date=$D0" \
+    -F "open_from=${WAS}T00:00" -F "close_at=${WILL}T00:00" \
     -F "image=@$IMG;type=image/png"
 
   has "an uploaded picture appears on the card" "$(curl -s "$BASE/")" 'class="dish__photo"'
@@ -748,8 +810,8 @@ if [ -f "$IMG" ]; then
   printf '<?php echo "pwned"; ?>' > "$EVIL"
   curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
     -F "_token=$(tok $A /admin/menu/1)" -F "id=1" -F "name=BBQ pork on rice" -F "location_id=1" \
-    -F "price=10.00" -F "status=published" -F "service_date=2026-08-16" \
-    -F "open_from=2026-01-01T00:00" -F "close_at=2027-01-01T00:00" \
+    -F "price=10.00" -F "status=published" -F "service_date=$D0" \
+    -F "open_from=${WAS}T00:00" -F "close_at=${WILL}T00:00" \
     -F "image=@$EVIL;type=image/jpeg"
 
   has "a script wearing a .jpg is refused" \
@@ -767,8 +829,8 @@ if [ -f "$IMG" ]; then
 
   curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
     -F "_token=$(tok $A /admin/menu/1)" -F "id=1" -F "name=BBQ pork on rice" -F "location_id=1" \
-    -F "price=10.00" -F "status=published" -F "service_date=2026-08-16" \
-    -F "open_from=2026-01-01T00:00" -F "close_at=2027-01-01T00:00" \
+    -F "price=10.00" -F "status=published" -F "service_date=$D0" \
+    -F "open_from=${WAS}T00:00" -F "close_at=${WILL}T00:00" \
     -F "image=@$BOMB;type=image/png"
 
   has "a tiny file claiming 900 megapixels is refused" \
@@ -780,8 +842,8 @@ if [ -f "$IMG" ]; then
   # Removing it must leave the dish standing.
   curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
     -F "_token=$(tok $A /admin/menu/1)" -F "id=1" -F "name=BBQ pork on rice" -F "location_id=1" \
-    -F "price=10.00" -F "status=published" -F "service_date=2026-08-16" \
-    -F "open_from=2026-01-01T00:00" -F "close_at=2027-01-01T00:00" -F "remove_image=1"
+    -F "price=10.00" -F "status=published" -F "service_date=$D0" \
+    -F "open_from=${WAS}T00:00" -F "close_at=${WILL}T00:00" -F "remove_image=1"
 
   HOME_HTML=$(curl -s "$BASE/")
   hasnt "removing the picture takes it off the card" "$HOME_HTML" 'class="dish__photo"'
@@ -981,8 +1043,8 @@ echo "Editing an order"
 T=$(tok $A /admin/menu/new)
 EDITABLE=$(curl -s -o /dev/null -w '%{redirect_url}' -b $A -c $A -X POST "$BASE/admin/menu/save" \
   -d "_token=$T" -d "name=Editable pie" -d "location_id=1" -d "price=10.00" \
-  -d "status=published" -d "service_date=2026-10-04" \
-  -d "open_from=2026-01-01T00:00" -d "close_at=2027-01-01T00:00" | grep -o '[0-9]*$')
+  -d "status=published" -d "service_date=$D4" \
+  -d "open_from=${WAS}T00:00" -d "close_at=${WILL}T00:00" | grep -o '[0-9]*$')
 
 T=$(tok $A /admin/users)
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/users/2/wallet" \
@@ -993,7 +1055,7 @@ curl -s -o /dev/null -b $M -c $M -X POST "$BASE/cart/add" -d "_token=$T" -d "ite
 curl -s -o /dev/null -b $M -c $M -X POST "$BASE/checkout" \
   -d "_token=$(tok $M /cart)" -d "payment_method=wallet" -d "line[0][qty]=3"
 
-EDIT_ID=$(curl -s -b $A -c $A "$BASE/admin/orders?date=2026-10-04" \
+EDIT_ID=$(curl -s -b $A -c $A "$BASE/admin/orders?date=$D4" \
   | sed -n 's|.*/admin/orders/\([0-9]*\)/edit.*|\1|p' | head -1)
 want "the orders list links to the editor" "$([ -n "$EDIT_ID" ] && echo yes || echo no)" "yes"
 want "which opens" "$(code $A "/admin/orders/$EDIT_ID/edit")" "200"
@@ -1056,7 +1118,7 @@ has "with an apostrophe in front of it" "$POISONED" "'=HYPERLINK"
 hasnt "so no cell opens with an equals sign" "$POISONED" ',=HYPERLINK'
 
 # The same guard on the other export, which is a different writer.
-REPORT=$(curl -s -b $A -c $A "$BASE/admin/report/export?date=2026-08-16")
+REPORT=$(curl -s -b $A -c $A "$BASE/admin/report/export?date=$D0")
 hasnt "and the report export is no different" "$REPORT" ',=HYPERLINK'
 
 echo ""
@@ -1076,7 +1138,7 @@ curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
   -d "_token=$(tok $A /admin/menu/new)" \
   -d "name=Box of chocolates" -d "location_id=1" -d "price=15.00" \
   -d "status=published" -d "standalone=1" -d "schedule_id=0" \
-  -d "open_from=2026-01-01T00:00" -d "close_at=2036-12-24T12:00"
+  -d "open_from=${WAS}T00:00" -d "close_at=2036-12-24T12:00"
 
 FRONT=$(curl -s -b $M -c $M "$BASE/")
 has "a one-off appears in its own section" "$FRONT" "Also available"
