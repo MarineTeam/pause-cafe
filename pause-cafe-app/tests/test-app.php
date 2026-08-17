@@ -15,6 +15,7 @@ fresh_database();
 require dirname( __DIR__ ) . '/src/bootstrap.php';
 
 use PauseCafe\Cart;
+use PauseCafe\Csv;
 use PauseCafe\Database;
 use PauseCafe\Groups;
 use PauseCafe\Kitchen;
@@ -828,6 +829,48 @@ check( 'nor does a negative one', Cart::split( -1 ), 0 );
 check( 'the cart is still what it was', count( Cart::lines() ), 3 );
 
 Cart::clear();
+
+/* ------------------------------------------------------------------ */
+
+echo "\nCSV that a spreadsheet will not run\n";
+
+/*
+ * Quoting protects the shape of a CSV file and says nothing about what Excel
+ * does with a cell that begins =, +, - or @: it treats it as a formula and
+ * evaluates it on open. Half of what the kitchen list exports was typed by a
+ * member, so somebody can order lunch under a name that is a formula and wait
+ * for an organiser to open the spreadsheet.
+ */
+check( 'a formula is made text', Csv::cell( '=HYPERLINK("https://elsewhere.example","Open")' ), '\'=HYPERLINK("https://elsewhere.example","Open")' );
+check( 'and so are the other three leaders', array( Csv::cell( '+1+1' ), Csv::cell( '-1+1' ), Csv::cell( '@SUM(A1)' ) ), array( "'+1+1", "'-1+1", "'@SUM(A1)" ) );
+check( 'a leading tab counts too, since the space is swallowed', Csv::cell( "\t=1+1" ), "'\t=1+1" );
+
+// Ordinary text is left exactly as typed.
+check( 'a name is untouched', Csv::cell( 'Ruth Okafor' ), 'Ruth Okafor' );
+check( 'so is a note', Csv::cell( 'no onions' ), 'no onions' );
+check( 'and an empty cell stays empty', Csv::cell( '' ), '' );
+
+/*
+ * Numbers matter as much as formulas here. Prefixing them would turn a column
+ * of money into a column of text, and the organiser totalling what is owed
+ * would get nothing -- so what decides is whether the whole value is a number,
+ * not which character it starts with.
+ */
+check( 'a negative number is still a number', Csv::cell( '-12.50' ), '-12.50' );
+check( 'money keeps its symbol', Csv::cell( '-$12.50' ), '-$12.50' );
+check( 'and its thousands comma', Csv::cell( '-1,234.56' ), '-1,234.56' );
+check( 'while arithmetic dressed as money does not', Csv::cell( '-12.50+SUM(A:A)' ), "'-12.50+SUM(A:A)" );
+
+// End to end through the writer, since that is what the exports call.
+$csvOut = fopen( 'php://memory', 'r+' );
+
+Csv::write( $csvOut, array( '=cmd', 'Ruth', '-5.00' ) );
+rewind( $csvOut );
+
+$csvLine = trim( (string) fgets( $csvOut ) );
+fclose( $csvOut );
+
+check( 'the row is written with the cell neutralised', $csvLine, "'=cmd,Ruth,-5.00" );
 
 echo "\nDate range presets\n";
 

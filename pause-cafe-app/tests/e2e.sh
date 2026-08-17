@@ -404,6 +404,10 @@ has "and the meal note as edited at checkout" "$CSV" "no onions and extra sauce"
 has "alongside the order note" "$CSV" "Side door please"
 hasnt "with no PHP notices" "$CSV" "Deprecated"
 
+# Money is left alone, or a column of totals becomes a column of text and
+# whoever is adding it up gets nothing.
+hasnt "and money is not quoted into text" "$CSV" "'\\\$"
+
 T=$(tok $A /admin/settings)
 curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/kitchen-password" -d "_token=$T" -d "password=kitchen-door"
 
@@ -752,6 +756,27 @@ if [ -f "$IMG" ]; then
     "$(curl -s -b $A -c $A "$BASE/admin/menu/1")" "not a picture"
   has "and the real picture is still there" "$(curl -s "$BASE/")" 'class="dish__photo"'
 
+  # A few dozen bytes on disk, 900 megapixels once opened. The 6 MB cap is a
+  # limit on the compressed file and says nothing about what GD would allocate,
+  # so the dimensions have to be read from the header and refused before the
+  # decode. Written by hand, because generating one means allocating exactly
+  # the memory this refuses.
+  BOMB=data/e2e-bomb.png
+  php -r '$w=30000;$h=30000;$ihdr=pack("NN",$w,$h).pack("C5",8,2,0,0,0);
+    file_put_contents($argv[1], "\x89PNG\r\n\x1a\n".pack("N",13)."IHDR".$ihdr.pack("N",crc32("IHDR".$ihdr)));' "$BOMB"
+
+  curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
+    -F "_token=$(tok $A /admin/menu/1)" -F "id=1" -F "name=BBQ pork on rice" -F "location_id=1" \
+    -F "price=10.00" -F "status=published" -F "service_date=2026-08-16" \
+    -F "open_from=2026-01-01T00:00" -F "close_at=2027-01-01T00:00" \
+    -F "image=@$BOMB;type=image/png"
+
+  has "a tiny file claiming 900 megapixels is refused" \
+    "$(curl -s -b $A -c $A "$BASE/admin/menu/1")" "pixels"
+  has "and the real picture survives that too" "$(curl -s "$BASE/")" 'class="dish__photo"'
+
+  rm -f "$BOMB"
+
   # Removing it must leave the dish standing.
   curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/menu/save" \
     -F "_token=$(tok $A /admin/menu/1)" -F "id=1" -F "name=BBQ pork on rice" -F "location_id=1" \
@@ -1012,6 +1037,27 @@ curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/$EDIT_ID/edit" \
 
 has "a details edit lands" "$(curl -s -b $A -c $A "$BASE/admin/orders/$EDIT_ID/edit")" "Samuel"
 want "and emails nobody" "$(grep -c 'order has changed' data/mail.log 2>/dev/null || echo 0)" "$MAILS"
+
+echo ""
+echo "A name that is a formula does not become one"
+# Quoting protects the shape of a CSV file, not what Excel does with a cell that
+# starts = or @: it runs it on open. Half the columns in these exports were
+# typed by a member, so a name like this waits in the file until an organiser
+# opens the spreadsheet.
+curl -s -o /dev/null -b $A -c $A -X POST "$BASE/admin/orders/$EDIT_ID/edit" \
+  -d "_token=$(tok $A "/admin/orders/$EDIT_ID/edit")" \
+  -d "action=details" -d "line_id=$LINE_ID" \
+  --data-urlencode 'person_name==HYPERLINK("https://elsewhere.example","Open")'
+
+POISONED=$(curl -s -b $A -c $A "$BASE/kitchen/export?range=all")
+
+has "the name still reaches the export" "$POISONED" "HYPERLINK"
+has "with an apostrophe in front of it" "$POISONED" "'=HYPERLINK"
+hasnt "so no cell opens with an equals sign" "$POISONED" ',=HYPERLINK'
+
+# The same guard on the other export, which is a different writer.
+REPORT=$(curl -s -b $A -c $A "$BASE/admin/report/export?date=2026-08-16")
+hasnt "and the report export is no different" "$REPORT" ',=HYPERLINK'
 
 echo ""
 echo "One-off dishes"

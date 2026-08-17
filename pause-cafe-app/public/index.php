@@ -15,6 +15,7 @@ use PauseCafe\Auth;
 use PauseCafe\Blackouts;
 use PauseCafe\Cart;
 use PauseCafe\Csrf;
+use PauseCafe\Csv;
 use PauseCafe\Database;
 use PauseCafe\Groups;
 use PauseCafe\Identities;
@@ -1087,9 +1088,10 @@ $router->get(
 		fwrite( $out, chr( 0xEF ) . chr( 0xBB ) . chr( 0xBF ) );
 
 		$row = static function ( array $fields ) use ( $out ): void {
-			// $escape must be explicit: PHP 8.4 deprecates its default and writes
-			// the notice into this very stream.
-			fputcsv( $out, $fields, ',', '"', '' );
+			// Csv::write neutralises anything a spreadsheet would treat as a
+			// formula. Most of the columns below are names and notes a member
+			// typed, which is exactly the material this is for.
+			Csv::write( $out, $fields );
 		};
 
 		/*
